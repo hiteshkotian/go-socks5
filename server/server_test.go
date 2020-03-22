@@ -111,8 +111,24 @@ func TestHandleConnectionForTime(t *testing.T) {
 	handleConnection(*c)
 
 	fmt.Printf("result for %p is : %s\n", &c, result)
-	// TODO See if we can check the exact response
-	if len(result) < 1 {
+	
+	// Check only till minutes
+	expected_result := fmt.Sprintf("Hello from %s",time.Now().String()[0:16])
+	if result[0:27] != expected_result {
+		t.Errorf(fmt.Sprintf("Expected: %s\n Result: %s\n", result[0:26], expected_result))
+	}
+}
+
+func TestHandleConnectionForInvalid(t *testing.T) {
+	var result string
+	command := "ANYTHING"
+	c := &testConn{msg: command, result: &result}
+	handleConnection(*c)
+
+	fmt.Printf("result for %p is : %s\n", &c, result)
+
+	expected_result := fmt.Sprintf("invalid command :%s\n", command)
+	if result != expected_result  {
 		t.Errorf("Invalid response from the handler")
 	}
 }
@@ -135,10 +151,40 @@ func TestHTTPGetMessage(t *testing.T) {
 	if !isHTTPMessage(msg) {
 		t.Errorf("HTTP Get message test failed")
 	}
+
+	msg = "PUT / HTTP1/1\r\nHost: localhost\r\n\r\n"
+	if !isHTTPMessage(msg) {
+		t.Errorf("HTTP PUT message test failed")
+	}
+
+	msg = "POST / HTTP1/1\r\nHost: localhost\r\n\r\n"
+	if !isHTTPMessage(msg) {
+		t.Errorf("HTTP PUT message test failed")
+	}
+
+	msg = "DELETE / HTTP1/1\r\nHost: localhost\r\n\r\n"
+	if !isHTTPMessage(msg) {
+		t.Errorf("HTTP PUT message test failed")
+	}
+
+	msg = "DELETE / HTTP1/1\r\nHost: localhost\r\n\r\n"
+	if !isHTTPMessage(msg) {
+		t.Errorf("HTTP PUT message test failed")
+	}
+
+	msg = "CONNECT / HTTP1/1\r\nHost: localhost\r\n\r\n"
+	if !isHTTPMessage(msg) {
+		t.Errorf("HTTP PUT message test failed")
+	}
 }
 
 func TestNonHTTPMessage(t *testing.T) {
 	msg := "This is some random test message"
+	if isHTTPMessage(msg) {
+		t.Errorf("this is not an http test message")
+	}
+
+	msg = "This is GET some random test message"
 	if isHTTPMessage(msg) {
 		t.Errorf("this is not an http test message")
 	}
