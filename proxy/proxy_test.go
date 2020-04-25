@@ -6,7 +6,7 @@ import (
 )
 
 func TestDaemonNewInvalidID(t *testing.T) {
-	daemon, err := DaemonNew("", "")
+	daemon, err := DaemonNew("", "", -1)
 	if err == nil {
 		t.Errorf("Error should be returned for invalid ID")
 		return
@@ -19,7 +19,7 @@ func TestDaemonNewInvalidID(t *testing.T) {
 }
 
 func TestDaemonNewDefaultProxyID(t *testing.T) {
-	daemon, err := DaemonNew("1010", "")
+	daemon, err := DaemonNew("1010", "", -1)
 	expected, err := os.Hostname()
 	if err != nil {
 		t.Errorf("Error should not be returned")
@@ -38,7 +38,7 @@ func TestDaemonNewDefaultProxyID(t *testing.T) {
 
 func TestDaemonNewWithProxyID(t *testing.T) {
 	expected := "proxy-id-str"
-	daemon, err := DaemonNew("1010", expected)
+	daemon, err := DaemonNew("1010", expected, -1)
 	if err != nil {
 		t.Errorf("Error should not be returned")
 		return
@@ -50,14 +50,16 @@ func TestDaemonNewWithProxyID(t *testing.T) {
 	}
 
 	if expected != daemon.proxyID {
-		t.Errorf("Proxy ID expected : %s but was set to %s", expected, daemon.proxyID)
+		t.Errorf("Proxy ID expected : %s but was set to %s",
+			expected, daemon.proxyID)
 	}
 }
 
 func TestDaemonNew(t *testing.T) {
 	expected := "proxy-id-str"
 	expectedID := "1010"
-	daemon, err := DaemonNew(expectedID, expected)
+	expectedPort := 8080
+	daemon, err := DaemonNew(expectedID, expected, expectedPort)
 	if err != nil {
 		t.Errorf("Error should not be returned")
 		return
@@ -74,6 +76,10 @@ func TestDaemonNew(t *testing.T) {
 
 	if expectedID != daemon.id {
 		t.Errorf("ID expected : %s but was set to %s", expectedID, daemon.id)
+	}
+
+	if expectedPort != daemon.port {
+		t.Errorf("PORT expected : %d but was set to %d", expectedPort, daemon.port)
 	}
 
 	if daemon.state != Initializing {

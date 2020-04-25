@@ -7,6 +7,7 @@ package proxy
 
 import (
 	"fmt"
+	"hiteshkotian/ssl-tunnel/server"
 	"os"
 )
 
@@ -45,6 +46,9 @@ const (
 	Disconnected State = 6
 )
 
+// default port the server will listen for connections
+const defaultPort = 1080
+
 // Daemon represents a single proxy connection
 type Daemon struct {
 	// Current state of the proxy
@@ -58,10 +62,16 @@ type Daemon struct {
 	// The proxy ID can be configured as a regular expression,
 	// by default it will be the hostname.
 	proxyID string
+
+	// Port
+	port int
+
+	// Server instance
+	server *server.Server
 }
 
 // DaemonNew will create a new instance of the daemon
-func DaemonNew(id, proxyID string) (*Daemon, error) {
+func DaemonNew(id, proxyID string, port int) (*Daemon, error) {
 	// Check ID
 	if id == "" {
 		return nil, fmt.Errorf("Invalid ID provided")
@@ -74,12 +84,22 @@ func DaemonNew(id, proxyID string) (*Daemon, error) {
 			return nil, err
 		}
 	}
-	return &Daemon{id: id, proxyID: proxyID, state: Initializing}, nil
+
+	if port <= 0 {
+		// Set default port
+		port = defaultPort
+	}
+
+	return &Daemon{id: id, proxyID: proxyID, state: Initializing, port: port}, nil
 }
 
 // GetState returns the current state of the daemon
 func (d *Daemon) GetState() State {
 	return d.state
+}
+
+func (d *Daemon) setState(newState State) {
+	d.state = newState
 }
 
 // GetID returns the ID of the daemon
@@ -90,4 +110,21 @@ func (d *Daemon) GetID() string {
 // GetProxyID returns the proxy ID of the daemon
 func (d *Daemon) GetProxyID() string {
 	return d.proxyID
+}
+
+// StartServers will start all the necessary servers to
+// start accepting user requests
+func (d *Daemon) StartServers() error {
+	fmt.Println("Starting servers for the daemon")
+
+	// Start the server
+	var err error
+	d.server, err = server.NewServer(d.port)
+	if err != nil {
+		return err
+	}
+
+	d.server.Start()
+
+	return nil
 }
