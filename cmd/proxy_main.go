@@ -2,30 +2,31 @@ package main
 
 import (
 	"fmt"
-	"hiteshkotian/secure-tcp/proxy"
+	"hiteshkotian/ssl-tunnel/proxy"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 )
 
 func main() {
-	setupCloseHandler()
+	proxy := proxy.New("server1", 8080)
+	setupCloseHandler(proxy)
 
-	proxy, err := proxy.DaemonNew("id", "")
-	if err != nil {
-		fmt.Println("Error when creating proxy daemon", err.Error())
-		os.Exit(1)
-	}
-
-	fmt.Printf("Proxy Daemon : \nID: %s\nProxyID : %s\n", proxy.GetID(), proxy.GetProxyID())
+	proxy.Start()
 }
 
-func setupCloseHandler() {
+func setupCloseHandler(proxy *proxy.Server) {
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		fmt.Println("shutting down server")
+		fmt.Println("shutting down proxy server")
+		once := sync.Once{}
+		onceBody := func() {
+			proxy.Stop()
+		}
+		once.Do(onceBody)
 		os.Exit(0)
 	}()
 }

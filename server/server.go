@@ -42,7 +42,7 @@ func (server *Server) Start() error {
 		fmt.Println("Unable to start tcp server: ", err.Error())
 		return err
 	}
-	return nil
+	return server.ServeTCP()
 }
 
 // ServeTCP will start  accepting TCP connections and will
@@ -50,15 +50,18 @@ func (server *Server) Start() error {
 func (server *Server) ServeTCP() error {
 	for {
 		conn, err := server.listener.Accept()
-		fmt.Printf("received connection request from %s\n", conn.RemoteAddr().String())
+		fmt.Printf("received connection request from %s\n",
+			conn.RemoteAddr().String())
 		if err != nil {
 			fmt.Println(err)
 			return err
 		}
 
 		// Set all the required timeouts
-		conn.SetReadDeadline(time.Now().Add(server.readTTL))
-		conn.SetWriteDeadline(time.Now().Add(server.writeTTL))
+		conn.SetReadDeadline(
+			time.Now().Add(server.readTTL))
+		conn.SetWriteDeadline(
+			time.Now().Add(server.writeTTL))
 
 		// Create a new thread to handle incoming connections
 		go handleConnection(conn)
