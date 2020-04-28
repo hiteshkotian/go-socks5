@@ -8,15 +8,20 @@ import (
 	"errors"
 )
 
+type ver uint8
 type nmethods uint8
 type method uint8
 type cmd uint8
+type rsv uint8
+type addresstype uint8
 type atype uint8
+type addr []uint8
+type port uint16
 type reply uint8
 
 const (
 	//Socks5 Version field of the socks protocol
-	Socks5 uint8 = 0x05
+	Socks5 ver = 0x05
 	//MaxMethodSize Maximum number of methods possible in a request packet
 	MaxMethodSize nmethods = 0xFF
 
@@ -70,45 +75,34 @@ const (
 
 //MethodSelectionReq Method selection request packet
 type MethodSelectionReq struct {
+	ver
 	nmethods
 	methods []method
 }
 
 //MethodSelectionResp Method selection response packet
 type MethodSelectionResp struct {
+	ver
 	method
 }
 
 //SockRequest Sock5 Request structure
 type SockRequest struct {
+	ver
 	cmd
-	atype
-	destaddr []uint8
-	destport uint16
+	rsv
+	addresstype
+	destaddr addr
+	destport port
 }
 
 //SockReply reply structure
 type SockReply struct {
+	ver
 	reply
-	atype
-	bindaddr []uint8
-	bindport uint16
-}
-
-//UDPPacket request/reply packet
-type UDPPacket struct {
-	fragment uint8
-	atype
-	address []uint8
-	port    uint16
-	data    []uint8
-}
-
-func CheckMessageVersion(msg []uint8) error {
-	if msg[0] != Socks5 {
-		return errors.New("Sock5Packet: Version incorrect")
-	}
-	return nil
+	reserved uint8
+	bindaddr addr
+	bindport port
 }
 
 //GetSocketMethod Used to decode Method packet
@@ -116,197 +110,22 @@ func GetSocketMethod(msg []uint8) (MethodSelectionReq, error) {
 	var ret MethodSelectionReq
 
 	if len(msg) < 2 || len(msg) != int(msg[1])+2 {
-		return ret, errors.New("Sock5Packet: Message incorrect size in method negotiation")
+		return ret, errors.New("Socks5:SOCKS Message incorrect size")
 	}
 
-	if err := CheckMessageVersion(msg); err != nil {
-		return ret, err
+	if msg[0] != uint8(Socks5) {
+		return ret, errors.New("Sock5:SOCKS VERSION INCORRECT")
 	}
 
 	if len(msg) > int(MaxMethodSize) {
-		return ret, errors.New("Sock5Packet: Message size too big in method negotation")
+		return ret, errors.New("Sock5:SOCKS Message size too big")
 	}
 
+	ret.ver = ver(msg[0])
 	ret.nmethods = nmethods(msg[1])
 
 	for _, v := range msg[2:] {
 		ret.methods = append(ret.methods, method(v))
 	}
-	return ret, nil
-}
-
-//GetSocketMethodResponse Get serialized Method response
-func GetSocketMethodResponse(resp MethodSelectionResp) ([]uint8, error) {
-	ret := make([]uint8, 2)
-	ret[0] = uint8(Socks5)
-	ret[1] = uint8(resp.method)
-	return ret, nil
-}
-
-//GetSocketRequestDeserialized Get deserialized socket request
-func GetSocketRequestDeserialized(msg []uint8) (SockRequest, error) {
-	var ret SockRequest
-
-	if len(msg) < 5 {
-		return ret, errors.New("Socks5Packet: Packet too small for a request")
-	}
-
-	if err := CheckMessageVersion(msg); err != nil {
-		return ret, err
-	}
-
-	ret.cmd = cmd(msg[1])
-	ret.atype = atype(msg[3])
-
-	var size uint8
-	var addrStart uint8 = 4
-
-	switch ret.atype {
-	case AtypIPV4:
-		size = AddrIPV4Size
-	case AtypIPV6:
-		size = AddrIPV6Size
-	case AtypDomain:
-		size = msg[4]
-		addrStart = 5
-	default:
-		return ret, errors.New("Socks5Packet: Wrong address type in request")
-	}
-
-	if len(msg) > 255 || addrStart+size+2 != uint8(len(msg)) {
-		return ret, errors.New("Socks5Packet: Packet wrong size in request")
-	}
-
-	ret.destaddr = make([]uint8, size)
-
-	for i, v := range msg[addrStart : addrStart+size] {
-		ret.destaddr[i] = v
-	}
-
-	ret.destport = (uint16(msg[addrStart+size+1]) << 8) | uint16(msg[addrStart+size])
-	return ret, nil
-}
-
-//GetSocketResponseSerialized Serializes the socket reply
-func GetSocketResponseSerialized(resp SockReply) ([]uint8, error) {
-	ret := make([]uint8, 4)
-
-	ret[0] = Socks5
-	ret[1] = uint8(resp.reply)
-	ret[2] = 0x00
-	ret[3] = uint8(resp.atype)
-
-	var size uint8
-
-	switch resp.atype {
-	case AtypIPV4:
-		size = AddrIPV4Size
-	case AtypIPV6:
-		size = AddrIPV6Size
-	case AtypDomain:
-		size = uint8(len(resp.bindaddr))
-		ret = append(ret, size)
-	default:
-		return ret, errors.New("Socks5Packet: Wrong address type in response")
-	}
-
-	if len(resp.bindaddr) != int(size) {
-		return ret, errors.New("Socks5Packet: Bind address size is not same as type")
-	}
-
-	for _, v := range resp.bindaddr {
-		ret = append(ret, v)
-	}
-
-	ret = append(ret, uint8(resp.bindport&0xFF))
-	ret = append(ret, uint8((resp.bindport>>8)&0xFF))
-
-	return ret, nil
-}
-
-//GetSocketUDPDeserialized Deserializes a UDP packet
-func GetSocketUDPDeserialized(msg []uint8) (UDPPacket, error) {
-	var ret UDPPacket
-
-	if len(msg) < 4 {
-		return ret, errors.New("Sock5Packet: UDP packet too small")
-	}
-
-	ret.fragment = msg[2]
-	ret.atype = atype(msg[3])
-
-	var size uint8
-	var addrStart uint8 = 4
-
-	switch ret.atype {
-	case AtypIPV4:
-		size = AddrIPV4Size
-	case AtypIPV6:
-		size = AddrIPV6Size
-	case AtypDomain:
-		size = msg[4]
-		addrStart = 5
-	default:
-		return ret, errors.New("Socks5Packet: Wrong address type in UDP request")
-	}
-
-	if len(msg) > 255 || (addrStart+size+2) >= uint8(len(msg)) {
-		return ret, errors.New("Socks5Packet: Packet wrong size in UDP request")
-	}
-
-	for _, v := range msg[addrStart : addrStart+size] {
-		ret.address = append(ret.address, v)
-	}
-
-	ret.port = (uint16(msg[addrStart+size+1]) << 8) | uint16(msg[addrStart+size])
-
-	for _, v := range msg[addrStart+size+2:] {
-		ret.data = append(ret.data, v)
-	}
-	return ret, nil
-}
-
-//GetSocketUDPSerialized Get UDP socket serialized
-func GetSocketUDPSerialized(resp UDPPacket) ([]uint8, error) {
-	ret := make([]uint8, 4)
-
-	ret[0] = 0x00
-	ret[1] = 0x00
-	ret[2] = resp.fragment
-	ret[3] = uint8(resp.atype)
-
-	var size uint8
-
-	switch resp.atype {
-	case AtypIPV4:
-		size = AddrIPV4Size
-	case AtypIPV6:
-		size = AddrIPV6Size
-	case AtypDomain:
-		size = uint8(len(resp.address))
-		ret = append(ret, size)
-	default:
-		return ret, errors.New("Socks5Packet: Wrong address type in response")
-	}
-
-	if len(resp.address) != int(size) {
-		return ret, errors.New("Socks5Packet: Address size is not same as type")
-	}
-
-	for _, v := range resp.address {
-		ret = append(ret, v)
-	}
-
-	ret = append(ret, uint8(resp.port&0xFF))
-	ret = append(ret, uint8((resp.port>>8)&0xFF))
-
-	if len(resp.data) <= 0 {
-		return ret, errors.New("Sock5Packet: Response data for UDP incorrect")
-	}
-
-	for _, v := range resp.data {
-		ret = append(ret, v)
-	}
-
 	return ret, nil
 }
