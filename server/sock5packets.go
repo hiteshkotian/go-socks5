@@ -12,11 +12,7 @@ type ver 			uint8
 type nmethods 		uint8
 type method 		uint8
 type cmd			uint8
-type rsv			uint8
-type addresstype 	uint8
 type atype			uint8
-type addr		  []uint8
-type port			uint16
 type reply			uint8
 
 const (
@@ -90,19 +86,24 @@ type MethodSelectionResp struct {
 type SockRequest struct {
 	ver
 	cmd
-	rsv
-	addresstype
-	destaddr		addr
-	destport		port	
+    atype
+	destaddr		[]uint8	
+	destport		uint16
 }
 
 //SockReply reply structure
 type SockReply struct {
 	ver
 	reply
-	reserved uint8
-	bindaddr		addr
-	bindport		port
+	bindaddr		[]uint8
+	bindport		uint16
+}
+
+func checkMessageVersion(msg []uint8) error {
+	if msg[0] != uint8(Socks5) {
+		return errors.New("Sock5: SOCKS version incorrect")
+	}
+	return nil
 }
 
 //GetSocketMethod Used to decode Method packet
@@ -113,8 +114,8 @@ func GetSocketMethod(msg []uint8) (MethodSelectionReq, error) {
 		return ret, errors.New("Socks5:SOCKS Message incorrect size")
 	}
 
-	if msg[0] != uint8(Socks5) {
-		return ret, errors.New("Sock5:SOCKS VERSION INCORRECT")
+	if err := checkMessageVersion(msg); err != nil {
+		return ret, err
 	} 
 
 	if len(msg) > int(MaxMethodSize) {
@@ -129,4 +130,49 @@ func GetSocketMethod(msg []uint8) (MethodSelectionReq, error) {
 		ret.methods = append(ret.methods, method(v))
 	} 
 	return ret, nil
+}
+
+//GetSocketMethodResponse Get serialized Method response
+func GetSocketMethodResponse(resp MethodSelectionResp)([]uint8, error) {
+	ret := make([]uint8, 2)
+	ret[0] = uint8(resp.ver)
+	ret[1] = uint8(resp.method)
+	return ret, nil
+}
+
+//GetSocketRequestDeserialized Get deserialized socket request
+func GetSocketRequestDeserialized(msg []uint8)(SockRequest, error) {
+	var ret SockRequest
+	if err := checkMessageVersion(msg); err != nil {
+		return ret, err
+	}
+
+	ret.ver = ver(msg[0])
+	ret.cmd = cmd(msg[1])
+	ret.atype = atype(msg[3])
+
+	var size uint8
+	var addrStart uint8 = 4
+
+	switch ret.atype {
+	case AtypIPV4:
+		size = AddrIPV4Size
+	case AtypIPV6:
+		size = AddrIPV6Size
+	case AtypDomain:
+		size = msg[4]
+		addrStart = 5
+	default:
+		return ret, errors.New("Wrong address type")
+	}
+
+	ret.destaddr = make([]uint8, size)
+	counter := 0
+	for _,v := range msg[addrStart:addrStart+size] {
+		ret.destaddr[counter] = v
+		counter++
+	}
+
+	ret.destport = (uint16(msg[addrStart+size+1])<<8) | uint16(msg[addrStart+size])
+	return ret,nil
 }
