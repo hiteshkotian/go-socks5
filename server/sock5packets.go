@@ -95,6 +95,14 @@ type SockReply struct {
 	bindport		uint16
 }
 
+//UDPPacket request/reply packet
+type UDPPacket struct {
+	fragment uint8
+	atype
+	address []uint8
+	port    uint16
+	data 	[]uint8
+}
 func checkMessageVersion(msg []uint8) error {
 	if msg[0] != Socks5 {
 		return errors.New("Sock5Packet: Version incorrect")
@@ -169,10 +177,9 @@ func GetSocketRequestDeserialized(msg []uint8)(SockRequest, error) {
 	}
 
 	ret.destaddr = make([]uint8, size)
-	counter := 0
-	for _,v := range msg[addrStart:addrStart+size] {
-		ret.destaddr[counter] = v
-		counter++
+
+	for i,v := range msg[addrStart:addrStart+size] {
+		ret.destaddr[i] = v
 	}
 
 	ret.destport = (uint16(msg[addrStart+size+1])<<8) | uint16(msg[addrStart+size])
@@ -215,3 +222,90 @@ func GetSocketResponseSerialized(resp SockReply) ([]uint8, error) {
 
 	return ret, nil
 } 
+
+//GetSocketUDPDeserialized Deserializes a UDP packet
+func GetSocketUDPDeserialized(msg []uint8) (UDPPacket, error) {
+	var ret UDPPacket
+	
+	if len(msg) < 4 {
+		return ret, errors.New("Sock5Packet: UDP packet too small")
+	}
+	
+	ret.fragment = msg[2]
+	ret.atype = atype(msg[3])
+
+	var size uint8
+	var addrStart uint8 = 4
+
+	switch ret.atype {
+	case AtypIPV4:
+		size = AddrIPV4Size
+	case AtypIPV6:
+		size = AddrIPV6Size
+	case AtypDomain:
+		size = msg[4]
+		addrStart = 5
+	default:
+		return ret, errors.New("Socks5Packet: Wrong address type in UDP request")
+	}
+
+	if len(msg) > 255 || (addrStart+size+2) >= uint8(len(msg)) {
+		return ret, errors.New("Socks5Packet: Packet wrong size in UDP request")
+	}
+
+	for _,v := range msg[addrStart:addrStart+size] {
+		ret.address = append(ret.address, v)
+	}
+
+	ret.port = (uint16(msg[addrStart+size+1])<<8) | uint16(msg[addrStart+size])
+
+	for _,v := range msg[addrStart+size+2:] {
+		ret.data = append(ret.data, v)
+	} 
+	return ret, nil
+}
+
+//GetSocketUDPSerialized Get UDP socket serialized
+func GetSocketUDPSerialized(resp UDPPacket) ([]uint8, error){
+	ret := make([]uint8, 4)
+
+	ret[0] = 0x00
+	ret[1] = 0x00
+	ret[2] = resp.fragment
+	ret[3] = uint8(resp.atype)
+
+	var size uint8
+
+	switch resp.atype {
+	case AtypIPV4:
+		size = AddrIPV4Size
+	case AtypIPV6:
+		size = AddrIPV6Size
+	case AtypDomain:
+		size = uint8(len(resp.address))
+		ret = append(ret, size)
+	default:
+		return ret, errors.New("Socks5Packet: Wrong address type in response")
+	}
+
+	if len(resp.address) != int(size) {
+		return ret, errors.New("Socks5Packet: Address size is not same as type")
+	}
+
+	for _,v := range(resp.address) {
+		ret = append(ret, v)
+	}
+
+	ret = append(ret, uint8(resp.port & 0xFF))
+	ret = append(ret, uint8((resp.port>>8) & 0xFF))
+
+	if len(resp.data) <= 0 {
+		return ret, errors.New("Sock5Packet: Response data for UDP incorrect")
+	} 
+
+	for _, v := range(resp.data) {
+		ret = append(ret, v)
+	}
+
+	return ret, nil
+}
