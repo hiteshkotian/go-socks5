@@ -264,3 +264,194 @@ func TestSocketResponseIncorrectSize(t *testing.T) {
 		t.Errorf("Socks5Packet: Incorrect size not caught by serialization")
 	}
 }
+
+func TestUDPHeaderIPV4Request(t *testing.T) {
+	resp := []uint8{0x00, 0x00, 0x54, uint8(AtypIPV4), 0x34, 0x43, 0x55, 0x56, 0x23, 0x45, 0x32, 0x34, 0x45}
+
+	respDeserial, err := GetSocketUDPDeserialized(resp)
+
+	if err != nil {
+		t.Errorf("Socks5Packet: Decoding of UDP packet failed")
+	}
+
+	if respDeserial.fragment != 0x54 || respDeserial.atype != AtypIPV4 {
+		t.Errorf("Socks5Packet: Incorrect decoding of UDP packet")
+	}
+
+	for i, v := range resp[4:8] {
+		if v != respDeserial.address[i] {
+			t.Errorf("Socks5Packet: Incorrect decoding of UDP packet IPV4 address")
+		}
+	}
+
+	if respDeserial.port != 0x4523 {
+		t.Errorf("Socks5Packet: Inccorect decoding of UDP packet IPV4 port")
+	}
+
+	for i, v := range resp[10:] {
+		if v != respDeserial.data[i] {
+			t.Errorf("Socks5Packet: Incorrect decoding of UDP packet IPV4 data")
+		}
+	}
+}
+
+func TestUDPHeaderIPV6Request(t *testing.T) {
+	resp := []uint8{0x00, 0x00, 0x95, uint8(AtypIPV6), 0x32, 0x45, 0x56, 0x65,
+		0x56, 0x54, 0x65, 0x56,
+		0x55, 0x54, 0x78, 0x9a,
+		0x59, 0x78, 0xbb, 0xee,
+		0x45, 0x55,
+		0x55, 0xbe, 0xab, 0xcd}
+
+	respDeserial, err := GetSocketUDPDeserialized(resp)
+	if err != nil {
+		t.Errorf("Socks5Packet: Decoding of UDP packet failed")
+	}
+
+	if respDeserial.fragment != 0x95 || respDeserial.atype != AtypIPV6 {
+		t.Errorf("Socks5Packet: Incorrect decoding of UDP packet")
+	}
+
+	for i, v := range resp[4:20] {
+		if v != respDeserial.address[i] {
+			t.Errorf("Socks5Packet: Incorrect decoding of UDP packet IPV6 address")
+		}
+	}
+
+	if respDeserial.port != 0x5545 {
+		t.Errorf("Socks5Packet: Inccorect decoding of UDP packet IPV6 port")
+	}
+
+	for i, v := range resp[22:] {
+		if v != respDeserial.data[i] {
+			t.Errorf("Socks5Packet: Incorrect decoding of UDP packet IPV4 data")
+		}
+	}
+}
+
+func TestUDPHeaderIPV6DomainName(t *testing.T) {
+	resp := []uint8{0x00, 0x00, 0x99, uint8(AtypDomain), 0x13, 0x45, 0x56, 0x65,
+		0x56, 0x54, 0x65, 0x56,
+		0x55, 0x54, 0x78, 0x9a,
+		0x59, 0x78, 0xbb, 0xee,
+		0x45, 0x55, 0x67, 0x99,
+		0x55, 0xbe, 0xab, 0xcd}
+
+	respDeserial, err := GetSocketUDPDeserialized(resp)
+	if err != nil {
+		t.Errorf("Socks5Packet: Decoding of UDP packet failed")
+	}
+
+	if respDeserial.fragment != 0x99 || respDeserial.atype != AtypDomain {
+		t.Errorf("Socks5Packet: Incorrect decoding of UDP packet")
+	}
+
+	for i, v := range resp[5:24] {
+		if v != respDeserial.address[i] {
+			t.Errorf("Socks5Packet: Incorrect decoding of UDP packet IPV6 address")
+		}
+	}
+
+	if respDeserial.port != 0xbe55 || respDeserial.data[0] != 0xab || respDeserial.data[1] != 0xcd {
+		t.Errorf("Socks5Packet: Incorrect decoding of UDP packet IPV6 port")
+	}
+}
+
+func TestUDPHeaderSmallSize(t *testing.T) {
+	resp := []uint8{0x00, 0x00, 0x99}
+
+	_, err := GetSocketUDPDeserialized(resp)
+
+	if err == nil {
+		t.Errorf("Sock5Packet: Incorrect decoding not detected")
+	}
+}
+
+func TestUDPSerializeIPV4(t *testing.T) {
+	resp := UDPPacket{fragment: 0x45, atype: AtypIPV4, address: []uint8{0x34, 0x45, 0x56, 0x78},
+		port: 0x4556, data: []uint8{0x34, 0x98, 0x78, 0x99}}
+
+	ret, err := GetSocketUDPSerialized(resp)
+
+	if err != nil {
+		t.Errorf("Sock5Packet: Error serializing IPV4 packet")
+	}
+
+	if ret[0] != 0x00 || ret[1] != 0x00 || ret[2] != 0x45 || ret[3] != uint8(AtypIPV4) {
+		t.Errorf("Sock5Packet: Error serializing IPV4 packet header")
+	}
+
+	if ret[4] != 0x34 || ret[5] != 0x45 || ret[6] != 0x56 || ret[7] != 0x78 {
+		t.Errorf("Socks5Packet: Error serializing IPV4 packet address")
+	}
+
+	if ret[8] != 0x56 || ret[9] != 0x45 {
+		t.Errorf("Sock5Packet: Error serializin IPV4 packet port")
+	}
+
+	if ret[10] != 0x34 || ret[11] != 0x98 || ret[12] != 0x78 || ret[13] != 0x99 {
+		t.Errorf("Socks5Packet: Error serializing IPV4 packet data")
+	}
+}
+
+func TestUDPPacketSerializeIPV6(t *testing.T) {
+	resp := UDPPacket{fragment: 0x78, atype: AtypIPV6, address: []uint8{0x78, 0x67, 0x88, 0x89,
+		0x87, 0x76, 0x88, 0x98,
+		0x77, 0x66, 0x87, 0x88,
+		0x77, 0x66, 0x78, 0x88},
+		port: 0x6734,
+		data: []uint8{0x78, 0x99}}
+
+	ret, err := GetSocketUDPSerialized(resp)
+
+	if err != nil {
+		t.Errorf("Sock5Packet: Error serializing IPV6 packet")
+	}
+
+	if ret[0] != 0x00 || ret[1] != 0x00 || ret[2] != 0x78 || ret[3] != uint8(AtypIPV6) {
+		t.Errorf("Sock5Packet: Error serializing IPV6 packet header")
+	}
+
+	for i, v := range ret[4:20] {
+		if resp.address[i] != v {
+			t.Errorf("Sock5Packt: Error serializing IPV6 packet address")
+		}
+	}
+
+	if ret[20] != 0x34 || ret[21] != 0x67 {
+		t.Errorf("Sock5Packet: Error serializin IPV6 packet port")
+	}
+
+	if ret[22] != 0x78 || ret[23] != 0x99 {
+		t.Errorf("Socks5Packet: Error serializing IPV6 packet data")
+	}
+}
+
+func TestUDPPacketSerializeDomain(t *testing.T) {
+	resp := UDPPacket{fragment: 0xab, atype: AtypDomain, address: []uint8{0x1, 0x34, 0x45},
+		port: 0x4563, data: []uint8{0x7}}
+
+	ret, err := GetSocketUDPSerialized(resp)
+
+	if err != nil {
+		t.Errorf("Sock5Packet: Error serializing domain packet")
+	}
+
+	if ret[0] != 0x00 || ret[1] != 0x00 || ret[2] != 0xab || ret[3] != uint8(AtypDomain) || ret[4] != 3 {
+		t.Errorf("Sock5Packet: Error serializing domain packet header")
+	}
+
+	for i, v := range ret[5:8] {
+		if resp.address[i] != v {
+			t.Errorf("Sock5Packt: Error serializing domain packet address")
+		}
+	}
+
+	if ret[8] != 0x63 || ret[9] != 0x45 {
+		t.Errorf("Sock5Packet: Error serializin IPV6 packet port")
+	}
+
+	if ret[10] != 0x7 {
+		t.Errorf("Socks5Packet: Error serializing IPV6 packet data")
+	}
+}
