@@ -8,70 +8,70 @@ import (
 	"errors"
 )
 
-type nmethods 		uint8
-type method 		uint8
-type cmd			uint8
-type atype			uint8
-type reply			uint8
+type nmethods uint8
+type method uint8
+type cmd uint8
+type atype uint8
+type reply uint8
 
 const (
 	//Socks5 Version field of the socks protocol
-	Socks5 			uint8		= 0x05
+	Socks5 uint8 = 0x05
 	//MaxMethodSize Maximum number of methods possible in a request packet
-	MaxMethodSize	nmethods	= 0xFF	
+	MaxMethodSize nmethods = 0xFF
 
 	//MethodNoAuth No authentication method
-	MethodNoAuth			method = 0x00
+	MethodNoAuth method = 0x00
 	//MethodGssAPI GSSAPI authentication method
-	MethodGssAPI			method = 0x01
+	MethodGssAPI method = 0x01
 	//MethodUserAuth User authenication method
-	MethodUserAuth			method = 0x02
+	MethodUserAuth method = 0x02
 	//MethodNoAcceptable No accpetable method found
-	MethodNoAcceptable		method = 0xFF
+	MethodNoAcceptable method = 0xFF
 
 	//CmdConnect Client command for a connection
-	CmdConnect			cmd	= 0x01
+	CmdConnect cmd = 0x01
 	//CmdBind Client command for a bind
-	CmdBind			cmd = 0x02
+	CmdBind cmd = 0x02
 	//CmdUDPAssc Client command for UDP Asscociate
-	CmdUDPAssc			cmd = 0x03 	
+	CmdUDPAssc cmd = 0x03
 
 	//AtypIPV4 IPV4 Address type
-	AtypIPV4			atype = 0x01
+	AtypIPV4 atype = 0x01
 	//AtypDomain Domain Address type
-	AtypDomain			atype = 0x03
+	AtypDomain atype = 0x03
 	//AtypIPV6 IPV6 Address type
-	AtypIPV6			atype = 0x04
+	AtypIPV6 atype = 0x04
 
 	//AddrIPV4Size IPV4 Address size
-	AddrIPV4Size		uint8 = 0x04
+	AddrIPV4Size uint8 = 0x04
 	//AddrIPV6Size IPV6 Address size
-	AddrIPV6Size		uint8 = 0x10
+	AddrIPV6Size uint8 = 0x10
 
 	//ReplySucceeded Reply sent to client suceeded
-	ReplySucceeded			reply = 0x00
+	ReplySucceeded reply = 0x00
 	//ReplyGeneralFail Reply sent to client that the request failed
-	ReplyGeneralFail		reply = 0x01
+	ReplyGeneralFail reply = 0x01
 	//ReplyConnDenied Reply sent to client that connection is denied
-	ReplyConnDenied		reply = 0x02
+	ReplyConnDenied reply = 0x02
 	//ReplyNetUnreachable Reply sent to client that network is unreachable
-	ReplyNetUnreachable	reply = 0x03
+	ReplyNetUnreachable reply = 0x03
 	//ReplyHostUnreachable Reply sent to client that the host is unreachable
-	ReplyHostUnreachable	reply = 0x04
+	ReplyHostUnreachable reply = 0x04
 	//ReplyConnRefused Reply sent to client that connection was refused
-	ReplyConnRefused		reply = 0x05
+	ReplyConnRefused reply = 0x05
 	//ReplyTTLExpired Reply sent to client that TTL expired
-	ReplyTTLExpired		reply = 0x06
+	ReplyTTLExpired reply = 0x06
 	//ReplyCmdUnsupp Reply sent to client that command is unsupported
-	ReplyCmdUnsupp		reply = 0x07
+	ReplyCmdUnsupp reply = 0x07
 	//ReplyAddrTypUnsupp Reply sent to client that address type is unsupported
-	ReplyAddrTypUnsupp  	reply = 0x08
+	ReplyAddrTypUnsupp reply = 0x08
 )
 
 //MethodSelectionReq Method selection request packet
 type MethodSelectionReq struct {
 	nmethods
-	methods		[]method
+	methods []method
 }
 
 //MethodSelectionResp Method selection response packet
@@ -82,17 +82,17 @@ type MethodSelectionResp struct {
 //SockRequest Sock5 Request structure
 type SockRequest struct {
 	cmd
-    atype
-	destaddr		[]uint8	
-	destport		uint16
+	atype
+	destaddr []uint8
+	destport uint16
 }
 
 //SockReply reply structure
 type SockReply struct {
 	reply
 	atype
-	bindaddr		[]uint8
-	bindport		uint16
+	bindaddr []uint8
+	bindport uint16
 }
 
 //UDPPacket request/reply packet
@@ -101,9 +101,10 @@ type UDPPacket struct {
 	atype
 	address []uint8
 	port    uint16
-	data 	[]uint8
+	data    []uint8
 }
-func checkMessageVersion(msg []uint8) error {
+
+func CheckMessageVersion(msg []uint8) error {
 	if msg[0] != Socks5 {
 		return errors.New("Sock5Packet: Version incorrect")
 	}
@@ -112,30 +113,30 @@ func checkMessageVersion(msg []uint8) error {
 
 //GetSocketMethod Used to decode Method packet
 func GetSocketMethod(msg []uint8) (MethodSelectionReq, error) {
-	var ret MethodSelectionReq 
-	
-	if len(msg) < 2 || len(msg) != int(msg[1]) + 2 {
+	var ret MethodSelectionReq
+
+	if len(msg) < 2 || len(msg) != int(msg[1])+2 {
 		return ret, errors.New("Sock5Packet: Message incorrect size in method negotiation")
 	}
 
-	if err := checkMessageVersion(msg); err != nil {
+	if err := CheckMessageVersion(msg); err != nil {
 		return ret, err
-	} 
+	}
 
 	if len(msg) > int(MaxMethodSize) {
 		return ret, errors.New("Sock5Packet: Message size too big in method negotation")
 	}
 
 	ret.nmethods = nmethods(msg[1])
-	
-	for _,v := range msg[2:] {
+
+	for _, v := range msg[2:] {
 		ret.methods = append(ret.methods, method(v))
-	} 
+	}
 	return ret, nil
 }
 
 //GetSocketMethodResponse Get serialized Method response
-func GetSocketMethodResponse(resp MethodSelectionResp)([]uint8, error) {
+func GetSocketMethodResponse(resp MethodSelectionResp) ([]uint8, error) {
 	ret := make([]uint8, 2)
 	ret[0] = uint8(Socks5)
 	ret[1] = uint8(resp.method)
@@ -143,14 +144,14 @@ func GetSocketMethodResponse(resp MethodSelectionResp)([]uint8, error) {
 }
 
 //GetSocketRequestDeserialized Get deserialized socket request
-func GetSocketRequestDeserialized(msg []uint8)(SockRequest, error) {
+func GetSocketRequestDeserialized(msg []uint8) (SockRequest, error) {
 	var ret SockRequest
 
 	if len(msg) < 5 {
 		return ret, errors.New("Socks5Packet: Packet too small for a request")
 	}
 
-	if err := checkMessageVersion(msg); err != nil {
+	if err := CheckMessageVersion(msg); err != nil {
 		return ret, err
 	}
 
@@ -178,12 +179,12 @@ func GetSocketRequestDeserialized(msg []uint8)(SockRequest, error) {
 
 	ret.destaddr = make([]uint8, size)
 
-	for i,v := range msg[addrStart:addrStart+size] {
+	for i, v := range msg[addrStart : addrStart+size] {
 		ret.destaddr[i] = v
 	}
 
-	ret.destport = (uint16(msg[addrStart+size+1])<<8) | uint16(msg[addrStart+size])
-	return ret,nil
+	ret.destport = (uint16(msg[addrStart+size+1]) << 8) | uint16(msg[addrStart+size])
+	return ret, nil
 }
 
 //GetSocketResponseSerialized Serializes the socket reply
@@ -213,24 +214,24 @@ func GetSocketResponseSerialized(resp SockReply) ([]uint8, error) {
 		return ret, errors.New("Socks5Packet: Bind address size is not same as type")
 	}
 
-	for _,v := range(resp.bindaddr) {
+	for _, v := range resp.bindaddr {
 		ret = append(ret, v)
 	}
 
-	ret = append(ret, uint8(resp.bindport & 0xFF))
-	ret = append(ret, uint8((resp.bindport>>8) & 0xFF))
+	ret = append(ret, uint8(resp.bindport&0xFF))
+	ret = append(ret, uint8((resp.bindport>>8)&0xFF))
 
 	return ret, nil
-} 
+}
 
 //GetSocketUDPDeserialized Deserializes a UDP packet
 func GetSocketUDPDeserialized(msg []uint8) (UDPPacket, error) {
 	var ret UDPPacket
-	
+
 	if len(msg) < 4 {
 		return ret, errors.New("Sock5Packet: UDP packet too small")
 	}
-	
+
 	ret.fragment = msg[2]
 	ret.atype = atype(msg[3])
 
@@ -253,20 +254,20 @@ func GetSocketUDPDeserialized(msg []uint8) (UDPPacket, error) {
 		return ret, errors.New("Socks5Packet: Packet wrong size in UDP request")
 	}
 
-	for _,v := range msg[addrStart:addrStart+size] {
+	for _, v := range msg[addrStart : addrStart+size] {
 		ret.address = append(ret.address, v)
 	}
 
-	ret.port = (uint16(msg[addrStart+size+1])<<8) | uint16(msg[addrStart+size])
+	ret.port = (uint16(msg[addrStart+size+1]) << 8) | uint16(msg[addrStart+size])
 
-	for _,v := range msg[addrStart+size+2:] {
+	for _, v := range msg[addrStart+size+2:] {
 		ret.data = append(ret.data, v)
-	} 
+	}
 	return ret, nil
 }
 
 //GetSocketUDPSerialized Get UDP socket serialized
-func GetSocketUDPSerialized(resp UDPPacket) ([]uint8, error){
+func GetSocketUDPSerialized(resp UDPPacket) ([]uint8, error) {
 	ret := make([]uint8, 4)
 
 	ret[0] = 0x00
@@ -292,18 +293,18 @@ func GetSocketUDPSerialized(resp UDPPacket) ([]uint8, error){
 		return ret, errors.New("Socks5Packet: Address size is not same as type")
 	}
 
-	for _,v := range(resp.address) {
+	for _, v := range resp.address {
 		ret = append(ret, v)
 	}
 
-	ret = append(ret, uint8(resp.port & 0xFF))
-	ret = append(ret, uint8((resp.port>>8) & 0xFF))
+	ret = append(ret, uint8(resp.port&0xFF))
+	ret = append(ret, uint8((resp.port>>8)&0xFF))
 
 	if len(resp.data) <= 0 {
 		return ret, errors.New("Sock5Packet: Response data for UDP incorrect")
-	} 
+	}
 
-	for _, v := range(resp.data) {
+	for _, v := range resp.data {
 		ret = append(ret, v)
 	}
 
