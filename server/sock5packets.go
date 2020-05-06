@@ -104,7 +104,7 @@ type UDPPacket struct {
 	data    []uint8
 }
 
-func checkMessageVersion(msg []uint8) error {
+func CheckMessageVersion(msg []uint8) error {
 	if msg[0] != Socks5 {
 		return errors.New("Sock5Packet: Version incorrect")
 	}
@@ -119,7 +119,7 @@ func GetSocketMethod(msg []uint8) (MethodSelectionReq, error) {
 		return ret, errors.New("Sock5Packet: Message incorrect size in method negotiation")
 	}
 
-	if err := checkMessageVersion(msg); err != nil {
+	if err := CheckMessageVersion(msg); err != nil {
 		return ret, err
 	}
 
@@ -151,7 +151,7 @@ func GetSocketRequestDeserialized(msg []uint8) (SockRequest, error) {
 		return ret, errors.New("Socks5Packet: Packet too small for a request")
 	}
 
-	if err := checkMessageVersion(msg); err != nil {
+	if err := CheckMessageVersion(msg); err != nil {
 		return ret, err
 	}
 

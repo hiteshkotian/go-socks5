@@ -1,3 +1,7 @@
+//File		: sock5packets_test.go
+//Author	: Nikhil Kotian
+//Copyright	:
+
 package server
 
 import (
