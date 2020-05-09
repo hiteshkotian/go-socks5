@@ -122,6 +122,6 @@ func handleConnection(conn net.Conn) {
 	} else if trimmedMsg == "TIME" {
 		conn.Write([]byte(fmt.Sprintf("Hello from %s\n", time.Now().String())))
 	} else {
-		conn.Write([]byte(fmt.Sprintf("invalid command : %s", trimmedMsg)))
+		conn.Write([]byte(fmt.Sprintf("invalid command :%s\n", trimmedMsg)))
 	}
 }
