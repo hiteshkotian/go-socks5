@@ -3,6 +3,7 @@ package proxy
 import (
 	"fmt"
 	"hiteshkotian/ssl-tunnel/handler"
+	"hiteshkotian/ssl-tunnel/logging"
 	"net"
 	"time"
 )
@@ -57,10 +58,10 @@ func NewFromConfig(configPath string) (*Server, error) {
 // Start starts the server and accepts incoming client requests
 func (server *Server) Start() error {
 	var err error
-	fmt.Println("Starting Proxy Server")
+	logging.Debug("Starting Proxy Server")
 	server.listener, err = net.Listen("tcp", fmt.Sprintf(":%d", server.port))
 	if err != nil {
-		fmt.Println("Unable to start tcp server: ", err.Error())
+		logging.Error("Unable to start tcp server: ", err)
 		return err
 	}
 
@@ -76,7 +77,7 @@ func (server *Server) ServeTCP() error {
 
 	for {
 		conn, err := server.listener.Accept()
-		fmt.Printf("received connection request from %s\n",
+		logging.Info("received connection request from %s",
 			conn.RemoteAddr().String())
 		if err != nil {
 			fmt.Println(err)
@@ -121,15 +122,27 @@ func (server *Server) handleRequest(conn net.Conn, sem chan bool) error {
 	defer conn.Close()
 
 	request := handler.NewRequest(conn, []byte("msgData"))
-	outboundHandler := handler.OutboundHandler{}
-	err := outboundHandler.HandleRequest(request)
-	if err != nil {
-		fmt.Printf("Error while sending request : %s\n", err.Error())
+	handlerChain := [2]handler.Handler{&handler.CustomHandler{}, &handler.OutboundHandler{}}
+
+	for _, handler := range handlerChain {
+		err := handler.HandleRequest(request)
+		if err != nil {
+			fmt.Printf("Error while sending request : %s\n", err.Error())
+			<-sem
+			return err
+		}
+		// }
 		<-sem
-		return err
 	}
+	// outboundHandler := handler.OutboundHandler{}
+	// err := outboundHandler.HandleRequest(request)
+	// if err != nil {
+	// 	fmt.Printf("Error while sending request : %s\n", err.Error())
+	// 	<-sem
+	// 	return err
 	// }
-	<-sem
+	// // }
+	// <-sem
 	return nil
 }
 
