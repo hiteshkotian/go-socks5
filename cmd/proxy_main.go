@@ -2,7 +2,7 @@
 package main
 
 import (
-	"fmt"
+	"hiteshkotian/ssl-tunnel/logging"
 	"hiteshkotian/ssl-tunnel/proxy"
 	"os"
 	"os/signal"
@@ -10,8 +10,14 @@ import (
 	"syscall"
 )
 
+var version string
+
 // Main entry point of the proxy
 func main() {
+	// logger := logging.New()
+	logging.Info("Iniitializing proxy tunnel version: %s", version)
+	// fmt.Printf("Project version is %s\n", version)
+
 	// Set the proxy properties
 	// TODO either accept flags or configuration file
 	// to bootstrap the proxy
@@ -35,7 +41,7 @@ func setupCloseHandler(proxy *proxy.Server) {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		fmt.Println("shutting down proxy server")
+		logging.Info("shutting down proxy server")
 		once := sync.Once{}
 		onceBody := func() {
 			proxy.Stop()
