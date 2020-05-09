@@ -3,7 +3,7 @@ default: build
 build: test
 	@echo Building server code
 	@mkdir -p ./bin
-	@go build ./server
+	# @go build ./server
 	@go build ./proxy
 	@go build ./handler
 	@echo Building binary
@@ -14,7 +14,7 @@ build: test
 
 test:
 	@echo Executing unit tests
-	@go test ./server
+	# @go test ./server
 	@go test ./proxy
 
 clean:

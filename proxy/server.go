@@ -9,19 +9,40 @@ import (
 
 // Server structure represents the main proxy instance
 type Server struct {
-	name           string
-	port           int
-	listener       net.Listener
+	// Name of the server
+	name string
+	// Port the server is listening for incoming requests
+	port int
+	// Maximum number of concurrent connections
+	// that can be processed at a given time
+	maxConnectionCount int
+	// incoming network listener
+	listener net.Listener
+	// connectionHandler channel. This channel is used for piping the
+	// incoming connections to the appropriate handler
 	connectHandler chan net.Conn
-	sem            chan bool
+	// Connection limiter. This channel ensures that at a given time the
+	// configured number of requests are being processed.
+	sem chan bool
+}
+
+// Request represents an incoming request from a client
+type Request struct {
+	// Unique ID assigned to the request
+	requestID int
+	// Client network connection object
+	connection net.Conn
+	// Client address
+	remoteAddress string
 }
 
 // New creats a new instance of the proxy
-func New(name string, port int) *Server {
-	proxy := &Server{name: name, port: port}
+func New(name string, port, maxConnectionCount int) *Server {
 
+	proxy := &Server{name: name, port: port,
+		maxConnectionCount: maxConnectionCount}
 	proxy.connectHandler = make(chan net.Conn)
-	proxy.sem = make(chan bool, 2)
+	proxy.sem = make(chan bool, proxy.maxConnectionCount)
 
 	return proxy
 }
@@ -29,6 +50,7 @@ func New(name string, port int) *Server {
 // NewFromConfig reads the provided config file and
 // returns a proxy instance
 func NewFromConfig(configPath string) (*Server, error) {
+	// TODO to implement this
 	return nil, nil
 }
 
@@ -49,6 +71,7 @@ func (server *Server) Start() error {
 // respond to client's connection.
 func (server *Server) ServeTCP() error {
 
+	// Start the connection handler
 	go server.startHandler()
 
 	for {
@@ -62,15 +85,16 @@ func (server *Server) ServeTCP() error {
 
 		// Set all the required timeouts
 		conn.SetReadDeadline(
-			time.Now().Add(30 * time.Second))
+			time.Now().Add(10 * time.Second))
 		conn.SetWriteDeadline(
-			time.Now().Add(60 * time.Second))
-		conn.SetDeadline(time.Now().Add(1 * time.Second))
+			time.Now().Add(30 * time.Second))
 
 		server.connectHandler <- conn
 	}
 }
 
+// startHandler function starts listening for incoming TCP
+// connection and handles the incoming requests
 func (server *Server) startHandler() {
 	for {
 		select {
@@ -81,11 +105,32 @@ func (server *Server) startHandler() {
 			}
 			fmt.Println("--------> Received request")
 			server.sem <- true
-			handler := handler.TcpHandler{}
-			handler.HandleRequest(conn, server.sem)
+			go server.handleRequest(conn, server.sem)
 		default:
 		}
 	}
+}
+
+// HandleRequest implementation for TCP Handler.
+// This function will accept all incoming TCP requests
+// and serialize it to a request object if it is a valid request.
+// In case of a serialization issue, the handler will return
+// an appropriate error code to the client.
+func (server *Server) handleRequest(conn net.Conn, sem chan bool) error {
+	fmt.Println("Processing incoming request in tcp handler")
+	defer conn.Close()
+
+	request := handler.NewRequest(conn, []byte("msgData"))
+	outboundHandler := handler.OutboundHandler{}
+	err := outboundHandler.HandleRequest(request)
+	if err != nil {
+		fmt.Printf("Error while sending request : %s\n", err.Error())
+		<-sem
+		return err
+	}
+	// }
+	<-sem
+	return nil
 }
 
 // Stop stops the server
