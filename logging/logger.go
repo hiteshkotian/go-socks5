@@ -1,30 +1,33 @@
 package logging
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+	"os"
+)
 
-type LogWriter interface {
-	Write(msg string)
-	Close()
-}
+const channelBufferSize = 50
 
-var logger LogWriter
+var logger *log.Logger
 var loggerChan chan string
+var debugLog bool
 
-func Register(log LogWriter) {
-	logger = log
-}
-
-func StartLogger() {
+func init() {
+	logger = log.New(os.Stdout, "Logger :: ", log.Ldate)
+	loggerChan = make(chan string, channelBufferSize)
 	go func() {
 		for msg := range loggerChan {
-			logger.Write(msg)
+			logger.Printf(msg)
 		}
 	}()
 }
 
-func init() {
-	loggerChan = make(chan string, 50)
-	logger = DefaultLogger{}
+func EnableDebug() {
+	debugLog = true
+}
+
+func DisableDebug() {
+	debugLog = false
 }
 
 func Info(message string, parameters ...interface{}) {
@@ -37,12 +40,14 @@ func Info(message string, parameters ...interface{}) {
 }
 
 func Debug(message string, parameters ...interface{}) {
-	var msg string
-	if len(parameters) > 0 {
-		msg = fmt.Sprintf(message, parameters...)
+	if debugLog {
+		var msg string
+		if len(parameters) > 0 {
+			msg = fmt.Sprintf(message, parameters...)
+		}
+		msg = fmt.Sprintf("[DEBUG] %s\n", msg)
+		loggerChan <- msg
 	}
-	msg = fmt.Sprintf("[DEBUG] %s\n", msg)
-	loggerChan <- msg
 }
 
 func Error(message string, err error, parameters ...interface{}) {
