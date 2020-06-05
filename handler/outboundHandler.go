@@ -59,14 +59,12 @@ func proxyData(from net.Conn, to net.Conn, complete chan bool,
 // This function will handle sending the request from
 // the client to the destination server
 func (outbound *OutboundHandler) HandleRequest(request *Request) error {
-	connection := request.conn
 
-	defer connection.Close()
+	// remote, _ := net.Dial("tcp", "172.217.12.228:443")
+	client := request.connection
+	remote := request.outboundConnection
 
-	remote, err := net.Dial("tcp", "localhost:8090")
-	if err != nil {
-		return err
-	}
+	fmt.Println("Outbound connection is ", remote)
 
 	defer remote.Close()
 
@@ -74,8 +72,8 @@ func (outbound *OutboundHandler) HandleRequest(request *Request) error {
 	ch1 := make(chan bool, 1)
 	ch2 := make(chan bool, 1)
 
-	go proxyData(connection, remote, complete, ch1, ch2)
-	go proxyData(remote, connection, complete, ch2, ch1)
+	go proxyData(client, remote, complete, ch1, ch2)
+	go proxyData(remote, client, complete, ch2, ch1)
 
 	<-complete
 	<-complete

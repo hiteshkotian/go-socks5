@@ -28,14 +28,16 @@ type Server struct {
 }
 
 // Request represents an incoming request from a client
-type Request struct {
-	// Unique ID assigned to the request
-	requestID int
-	// Client network connection object
-	connection net.Conn
-	// Client address
-	remoteAddress string
-}
+// type Request struct {
+// 	// Unique ID assigned to the request
+// 	requestID int
+// 	// Client network connection object
+// 	connection net.Conn
+// 	// Client address
+// 	remoteAddress string
+
+// 	state int
+// }
 
 // New creats a new instance of the proxy
 func New(name string, port, maxConnectionCount int) *Server {
@@ -119,30 +121,137 @@ func (server *Server) startHandler() {
 // an appropriate error code to the client.
 func (server *Server) handleRequest(conn net.Conn, sem chan bool) error {
 	fmt.Println("Processing incoming request in tcp handler")
-	defer conn.Close()
 
-	request := handler.NewRequest(conn, []byte("msgData"))
-	handlerChain := [2]handler.Handler{&handler.CustomHandler{}, &handler.OutboundHandler{}}
+	request := handler.NewRequest(conn)
 
-	for _, handler := range handlerChain {
-		err := handler.HandleRequest(request)
-		if err != nil {
-			fmt.Printf("Error while sending request : %s\n", err.Error())
-			<-sem
-			return err
-		}
-		// }
+	err := server.handleInitial(request)
+	if err != nil {
+		defer conn.Close()
+		conn.Write([]byte(err.Error()))
 		<-sem
 	}
-	// outboundHandler := handler.OutboundHandler{}
-	// err := outboundHandler.HandleRequest(request)
-	// if err != nil {
-	// 	fmt.Printf("Error while sending request : %s\n", err.Error())
-	// 	<-sem
-	// 	return err
-	// }
-	// // }
-	// <-sem
+
+	// Writ accept
+	response := []byte{0x05, 0x00}
+	conn.Write(response)
+
+	// Wait for response
+	err = server.handleConnectRequest(request)
+	if err != nil {
+		fmt.Println("Error handling connect request : ", err.Error())
+		defer conn.Close()
+		conn.Write([]byte(err.Error()))
+		<-sem
+	}
+
+	outboundHandler := handler.OutboundHandler{}
+	err = outboundHandler.HandleRequest(request)
+	if err != nil {
+		fmt.Printf("Error while sending request : %s\n", err.Error())
+		<-sem
+		return err
+	}
+
+	conn.Close()
+
+	<-sem
+	return nil
+}
+
+func (server *Server) handleInitial(request *handler.Request) error {
+	data := make([]byte, 20)
+	n, e := request.Read(data)
+	if e != nil {
+		return e
+	}
+
+	version := data[0]
+	authCt := data[1]
+	logging.Debug("Total num : %d", n)
+	logging.Debug("Received connect with version : %d", version)
+	logging.Debug("Received connect with auth ct : %d", authCt)
+
+	if version != 0x05 {
+		logging.Error("Version mismatch",
+			fmt.Errorf("Version expeted was 0x05 but received %d", version), nil)
+	} else {
+		logging.Debug("Version matched!!!")
+	}
+	for i := 0; i < n; i++ {
+		logging.Debug("0x%02x ", data[i])
+	}
+	request.SetState(handler.INITIALIZING)
+
+	return nil
+}
+
+func (server *Server) handleConnectRequest(request *handler.Request) error {
+	data := make([]byte, 200)
+	_, e := request.Read(data)
+
+	if e != nil {
+		return e
+	}
+
+	connect, err := GetSocketRequestDeserialized(data)
+	if err != nil {
+		logging.Error("Connect request error", err)
+		return err
+	}
+
+	fmt.Printf("Connection type is : 0x%02x\n", connect.atype)
+	// ipv4
+	if connect.atype == 0x01 {
+		ip := fmt.Sprintf("%d.%d.%d.%d", connect.destaddr[0],
+			connect.destaddr[1], connect.destaddr[2], connect.destaddr[3])
+		fmt.Printf("IP Address of connection : %s and port is : %d\n", ip, connect.destport)
+		request.SetOutboundIP(ip)
+		outConnection, err := net.Dial("tcp", fmt.Sprintf("%s:%d", ip, connect.destport))
+		if err != nil {
+			return err
+		}
+
+		request.SetOutboundConnection(outConnection)
+	} else if connect.atype == 0x03 {
+		fmt.Printf("Connect request is for domain : %s\n", connect.destaddr)
+		addr, err := net.LookupHost(string(connect.destaddr))
+		if err != nil {
+			return err
+		}
+
+		for _, ad := range addr {
+			fmt.Printf("Range : %s\n", ad)
+		}
+
+		host := fmt.Sprintf("%s:%d", addr[0], connect.destport)
+		fmt.Println("Connecting to : ", host)
+		outConnection, err := net.Dial("tcp", host)
+		if err != nil {
+			return err
+		}
+
+		request.SetOutboundConnection(outConnection)
+	}
+
+	fmt.Println("outbound connection set")
+
+	request.SetOutboundPort(connect.destport)
+
+	dest := connect.destaddr
+	port := []byte{0x00, 0x50}
+
+	resp := make([]byte, 4+len(dest)+len(port))
+	resp[0] = 0x05
+	resp[1] = 0x00
+	resp[2] = 0x00
+	resp[3] = 0x01
+	copy(resp[4:], dest)
+	copy(resp[4+len(dest):], port)
+
+	request.Write(resp)
+
+	fmt.Println("Response sent")
+
 	return nil
 }
 
@@ -152,4 +261,32 @@ func (server *Server) Stop() {
 	fmt.Println("Stopping Proxy Server")
 	close(server.connectHandler)
 	server.listener.Close()
+}
+
+func (server *Server) sendSocksError(request *handler.Request) {
+	// state := request.State()
+	request.SetState(handler.ERROR)
+	var errorStream []byte
+	// switch state {
+	// case handler.NEW:
+	// Sending INIT error
+	// Format :
+	// +-----+-------+
+	// | 1   |   1   |
+	// +-----+-------+
+	// | VER | STATE |
+	// +-----+-------+
+	errorStream = []byte{0x05, 0x01}
+	// default:
+	// Sending INIT error
+	// Format :
+	// +-----+--------+-----+---------+---------+
+	// | 1   |   1    |  1  |  var    |   2     |
+	// +-----+--------+-----+---------+---------+
+	// | VER | STATUS | RSV | BNDADDR | BNDPORT |
+	// +-----+--------+-----+---------+---------+
+
+	// }
+	request.Write(errorStream)
+	request.Close()
 }

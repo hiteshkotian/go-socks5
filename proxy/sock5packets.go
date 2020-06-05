@@ -2,10 +2,11 @@
 //Author	: Nikhil Kotian
 //Copyright	:
 
-package server
+package proxy
 
 import (
 	"errors"
+	"fmt"
 )
 
 type nmethods uint8
@@ -77,6 +78,12 @@ type MethodSelectionReq struct {
 //MethodSelectionResp Method selection response packet
 type MethodSelectionResp struct {
 	method
+}
+
+type SocksInitial struct {
+	version     uint8
+	authCount   uint8
+	authOptions []uint8
 }
 
 //SockRequest Sock5 Request structure
@@ -173,18 +180,28 @@ func GetSocketRequestDeserialized(msg []uint8) (SockRequest, error) {
 		return ret, errors.New("Socks5Packet: Wrong address type in request")
 	}
 
-	if len(msg) > 255 || addrStart+size+2 != uint8(len(msg)) {
-		return ret, errors.New("Socks5Packet: Packet wrong size in request")
-	}
-
 	ret.destaddr = make([]uint8, size)
 
 	for i, v := range msg[addrStart : addrStart+size] {
 		ret.destaddr[i] = v
 	}
 
-	ret.destport = (uint16(msg[addrStart+size+1]) << 8) | uint16(msg[addrStart+size])
+	fmt.Printf("port is : 0x%02x\n", msg[addrStart+size])
+	fmt.Printf("port is : 0x%02x\n", msg[addrStart+size+1])
+	ret.destport = (uint16(msg[addrStart+size]) << 8) | uint16(msg[addrStart+size+1])
 	return ret, nil
+}
+
+func GetSocketInitialSerialized(msg []uint8) (initial SocksInitial, err error) {
+	if len(msg) < 3 {
+		err = fmt.Errorf("Packet too small for an initial request")
+		return
+	}
+
+	initial.version = msg[0]
+	initial.authCount = msg[1]
+	initial.authOptions = msg[2:]
+	return
 }
 
 //GetSocketResponseSerialized Serializes the socket reply
