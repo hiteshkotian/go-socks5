@@ -123,12 +123,13 @@ func (server *Server) handleRequest(conn net.Conn, sem chan bool) error {
 	fmt.Println("Processing incoming request in tcp handler")
 
 	request := handler.NewRequest(conn)
+	defer request.Close()
 
 	err := server.handleInitial(request)
 	if err != nil {
-		defer conn.Close()
-		conn.Write([]byte(err.Error()))
+		server.sendSocksError(request)
 		<-sem
+		return nil
 	}
 
 	// Writ accept
@@ -139,20 +140,19 @@ func (server *Server) handleRequest(conn net.Conn, sem chan bool) error {
 	err = server.handleConnectRequest(request)
 	if err != nil {
 		fmt.Println("Error handling connect request : ", err.Error())
-		defer conn.Close()
-		conn.Write([]byte(err.Error()))
+		server.sendSocksError(request)
 		<-sem
+		return nil
 	}
 
 	outboundHandler := handler.OutboundHandler{}
 	err = outboundHandler.HandleRequest(request)
 	if err != nil {
 		fmt.Printf("Error while sending request : %s\n", err.Error())
+		server.sendSocksError(request)
 		<-sem
-		return err
+		return nil
 	}
-
-	conn.Close()
 
 	<-sem
 	return nil
@@ -190,6 +190,7 @@ func (server *Server) handleConnectRequest(request *handler.Request) error {
 	_, e := request.Read(data)
 
 	if e != nil {
+		fmt.Printf("error reading request : %s\n", e.Error())
 		return e
 	}
 
@@ -288,5 +289,4 @@ func (server *Server) sendSocksError(request *handler.Request) {
 
 	// }
 	request.Write(errorStream)
-	request.Close()
 }

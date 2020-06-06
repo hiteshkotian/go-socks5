@@ -23,7 +23,7 @@ func main() {
 	// to bootstrap the proxy
 	name := "server1"
 	port := 1080
-	maxConnCount := 3
+	maxConnCount := 10
 	// Create an instance of the proxy
 	proxy := proxy.New(name, port, maxConnCount)
 
