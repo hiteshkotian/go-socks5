@@ -27,18 +27,6 @@ type Server struct {
 	sem chan bool
 }
 
-// Request represents an incoming request from a client
-// type Request struct {
-// 	// Unique ID assigned to the request
-// 	requestID int
-// 	// Client network connection object
-// 	connection net.Conn
-// 	// Client address
-// 	remoteAddress string
-
-// 	state int
-// }
-
 // New creats a new instance of the proxy
 func New(name string, port, maxConnectionCount int) *Server {
 
@@ -60,7 +48,7 @@ func NewFromConfig(configPath string) (*Server, error) {
 // Start starts the server and accepts incoming client requests
 func (server *Server) Start() error {
 	var err error
-	logging.Debug("Starting Proxy Server")
+	logging.Info("Starting Proxy Server")
 	server.listener, err = net.Listen("tcp", fmt.Sprintf(":%d", server.port))
 	if err != nil {
 		logging.Error("Unable to start tcp server: ", err)
@@ -79,10 +67,10 @@ func (server *Server) ServeTCP() error {
 
 	for {
 		conn, err := server.listener.Accept()
-		logging.Info("received connection request from %s",
+		logging.Debug("received connection request from %s",
 			conn.RemoteAddr().String())
 		if err != nil {
-			fmt.Println(err)
+			logging.Error("Erorr while reading incoming request", err)
 			return err
 		}
 
@@ -103,10 +91,8 @@ func (server *Server) startHandler() {
 		select {
 		case conn, more := <-server.connectHandler:
 			if !more {
-				fmt.Println("Closing")
 				return
 			}
-			fmt.Println("--------> Received request")
 			server.sem <- true
 			go server.handleRequest(conn, server.sem)
 		default:
@@ -120,8 +106,8 @@ func (server *Server) startHandler() {
 // In case of a serialization issue, the handler will return
 // an appropriate error code to the client.
 func (server *Server) handleRequest(conn net.Conn, sem chan bool) error {
-	fmt.Println("Processing incoming request in tcp handler")
 
+	logging.Debug("Processing incoming client request")
 	request := handler.NewRequest(conn)
 	defer request.Close()
 
@@ -139,7 +125,7 @@ func (server *Server) handleRequest(conn net.Conn, sem chan bool) error {
 	// Wait for response
 	err = server.handleConnectRequest(request)
 	if err != nil {
-		fmt.Println("Error handling connect request : ", err.Error())
+		logging.Error("Error handling connect request : ", err)
 		server.sendSocksError(request)
 		<-sem
 		return nil
@@ -148,7 +134,7 @@ func (server *Server) handleRequest(conn net.Conn, sem chan bool) error {
 	outboundHandler := handler.OutboundHandler{}
 	err = outboundHandler.HandleRequest(request)
 	if err != nil {
-		fmt.Printf("Error while sending request : %s\n", err.Error())
+		logging.Error("Error while sending request : %s\n", err)
 		server.sendSocksError(request)
 		<-sem
 		return nil
@@ -173,7 +159,7 @@ func (server *Server) handleInitial(request *handler.Request) error {
 
 	if version != 0x05 {
 		logging.Error("Version mismatch",
-			fmt.Errorf("Version expeted was 0x05 but received %d", version), nil)
+			fmt.Errorf("Version expeted was 0x05 but received %d", version))
 	} else {
 		logging.Debug("Version matched!!!")
 	}
@@ -187,11 +173,11 @@ func (server *Server) handleInitial(request *handler.Request) error {
 
 func (server *Server) handleConnectRequest(request *handler.Request) error {
 	data := make([]byte, 200)
-	_, e := request.Read(data)
+	_, err := request.Read(data)
 
-	if e != nil {
-		fmt.Printf("error reading request : %s\n", e.Error())
-		return e
+	if err != nil {
+		logging.Error("error reading request", err)
+		return err
 	}
 
 	connect, err := GetSocketRequestDeserialized(data)
@@ -200,12 +186,9 @@ func (server *Server) handleConnectRequest(request *handler.Request) error {
 		return err
 	}
 
-	fmt.Printf("Connection type is : 0x%02x\n", connect.atype)
-	// ipv4
 	if connect.atype == 0x01 {
 		ip := fmt.Sprintf("%d.%d.%d.%d", connect.destaddr[0],
 			connect.destaddr[1], connect.destaddr[2], connect.destaddr[3])
-		fmt.Printf("IP Address of connection : %s and port is : %d\n", ip, connect.destport)
 		request.SetOutboundIP(ip)
 		outConnection, err := net.Dial("tcp", fmt.Sprintf("%s:%d", ip, connect.destport))
 		if err != nil {
@@ -214,18 +197,12 @@ func (server *Server) handleConnectRequest(request *handler.Request) error {
 
 		request.SetOutboundConnection(outConnection)
 	} else if connect.atype == 0x03 {
-		fmt.Printf("Connect request is for domain : %s\n", connect.destaddr)
 		addr, err := net.LookupHost(string(connect.destaddr))
 		if err != nil {
 			return err
 		}
 
-		for _, ad := range addr {
-			fmt.Printf("Range : %s\n", ad)
-		}
-
 		host := fmt.Sprintf("%s:%d", addr[0], connect.destport)
-		fmt.Println("Connecting to : ", host)
 		outConnection, err := net.Dial("tcp", host)
 		if err != nil {
 			return err
@@ -233,8 +210,6 @@ func (server *Server) handleConnectRequest(request *handler.Request) error {
 
 		request.SetOutboundConnection(outConnection)
 	}
-
-	fmt.Println("outbound connection set")
 
 	request.SetOutboundPort(connect.destport)
 
@@ -250,16 +225,13 @@ func (server *Server) handleConnectRequest(request *handler.Request) error {
 	copy(resp[4+len(dest):], port)
 
 	request.Write(resp)
-
-	fmt.Println("Response sent")
-
 	return nil
 }
 
 // Stop stops the server
 func (server *Server) Stop() {
 	// Closing Channel
-	fmt.Println("Stopping Proxy Server")
+	logging.Info("Stopping Proxy Server")
 	close(server.connectHandler)
 	server.listener.Close()
 }
