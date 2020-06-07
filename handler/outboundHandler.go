@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"fmt"
+	"hiteshkotian/ssl-tunnel/logging"
 	"net"
 	"time"
 )
@@ -40,7 +40,7 @@ func proxyData(from net.Conn, to net.Conn, complete chan bool,
 			if err != nil {
 				complete <- true
 				done <- true
-				fmt.Printf("Error is : %s\n", err.Error())
+				logging.Error("Error while proxying request", err)
 				return
 			}
 			// Write data to the destination.
@@ -60,11 +60,8 @@ func proxyData(from net.Conn, to net.Conn, complete chan bool,
 // the client to the destination server
 func (outbound *OutboundHandler) HandleRequest(request *Request) error {
 
-	// remote, _ := net.Dial("tcp", "172.217.12.228:443")
 	client := request.connection
 	remote := request.outboundConnection
-
-	fmt.Println("Outbound connection is ", remote)
 
 	defer remote.Close()
 

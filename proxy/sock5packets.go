@@ -186,8 +186,6 @@ func GetSocketRequestDeserialized(msg []uint8) (SockRequest, error) {
 		ret.destaddr[i] = v
 	}
 
-	fmt.Printf("port is : 0x%02x\n", msg[addrStart+size])
-	fmt.Printf("port is : 0x%02x\n", msg[addrStart+size+1])
 	ret.destport = (uint16(msg[addrStart+size]) << 8) | uint16(msg[addrStart+size+1])
 	return ret, nil
 }

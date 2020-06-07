@@ -97,15 +97,6 @@ func (request *Request) State() ProxyState {
 // Handler interface defines the basic function
 // to be implemented by a handler
 type Handler interface {
-	// NewHandler will return a new handler instance
-	// NewHandler() (Handler, error)
-	// NewHandlerWithConfig will return a new handler
-	// instance based on the config provided
-	// NewHandlerWithConfig(map[string]string) (Handler, error)
-	// HandleRequest will handle the incoming request
-	// and subsequently handle the response
-	// HandleRequest(net.Conn) error
-
 	HandleRequest(*Request) error
 }
 

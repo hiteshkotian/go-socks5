@@ -34,6 +34,8 @@ func Info(message string, parameters ...interface{}) {
 	var msg string
 	if len(parameters) > 0 {
 		msg = fmt.Sprintf(message, parameters...)
+	} else {
+		msg = message
 	}
 	msg = fmt.Sprintf("[INFO] %s\n", msg)
 	loggerChan <- msg
@@ -44,6 +46,8 @@ func Debug(message string, parameters ...interface{}) {
 		var msg string
 		if len(parameters) > 0 {
 			msg = fmt.Sprintf(message, parameters...)
+		} else {
+			msg = message
 		}
 		msg = fmt.Sprintf("[DEBUG] %s\n", msg)
 		loggerChan <- msg
@@ -54,6 +58,8 @@ func Error(message string, err error, parameters ...interface{}) {
 	var msg string
 	if len(parameters) > 0 {
 		msg = fmt.Sprintf(message, parameters...)
+	} else {
+		msg = message
 	}
 	msg = fmt.Sprintf("[ERROR] %s: %s\n", msg, err.Error())
 	loggerChan <- msg
