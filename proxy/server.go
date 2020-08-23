@@ -67,12 +67,14 @@ func (server *Server) ServeTCP() error {
 
 	for {
 		conn, err := server.listener.Accept()
-		logging.Debug("received connection request from %s",
-			conn.RemoteAddr().String())
+
 		if err != nil {
 			logging.Error("Erorr while reading incoming request", err)
 			return err
 		}
+
+		logging.Debug("received connection request from %s",
+			conn.RemoteAddr().String())
 
 		// Set all the required timeouts
 		conn.SetReadDeadline(
@@ -95,7 +97,6 @@ func (server *Server) startHandler() {
 			}
 			server.sem <- true
 			go server.handleRequest(conn, server.sem)
-		default:
 		}
 	}
 }
@@ -186,11 +187,12 @@ func (server *Server) handleConnectRequest(request *handler.Request) error {
 		return err
 	}
 
+	var outConnection net.Conn
 	if connect.atype == 0x01 {
 		ip := fmt.Sprintf("%d.%d.%d.%d", connect.destaddr[0],
 			connect.destaddr[1], connect.destaddr[2], connect.destaddr[3])
 		request.SetOutboundIP(ip)
-		outConnection, err := net.Dial("tcp", fmt.Sprintf("%s:%d", ip, connect.destport))
+		outConnection, err = net.Dial("tcp", fmt.Sprintf("%s:%d", ip, connect.destport))
 		if err != nil {
 			return err
 		}
@@ -203,12 +205,27 @@ func (server *Server) handleConnectRequest(request *handler.Request) error {
 		}
 
 		host := fmt.Sprintf("%s:%d", addr[0], connect.destport)
-		outConnection, err := net.Dial("tcp", host)
+		outConnection, err = net.Dial("tcp", host)
 		if err != nil {
 			return err
 		}
 
 		request.SetOutboundConnection(outConnection)
+	} else if connect.atype == 0x04 {
+		ip := net.IP(connect.destaddr)
+		ipAddr := ip.String()
+		// logging.Debug("Connecting to [%s]:%d\n", ipAddr, connect.destport)
+		request.SetOutboundIP(ipAddr)
+		outConnection, err = net.Dial("tcp6", fmt.Sprintf("[%s]:%d", ipAddr, connect.destport))
+		if err != nil {
+			return err
+		}
+		request.SetOutboundConnection(outConnection)
+	} else {
+		// logging.Info("Connection type %d not supported", connect.atype)
+		// return fmt.Errorf("Unsupported connection type")
+		server.sendSocksConnectError(request, 0x08, &connect)
+		return fmt.Errorf("Unsupported connection type")
 	}
 
 	request.SetOutboundPort(connect.destport)
@@ -220,7 +237,7 @@ func (server *Server) handleConnectRequest(request *handler.Request) error {
 	resp[0] = 0x05
 	resp[1] = 0x00
 	resp[2] = 0x00
-	resp[3] = 0x01
+	resp[3] = byte(connect.atype)
 	copy(resp[4:], dest)
 	copy(resp[4+len(dest):], port)
 
@@ -260,5 +277,20 @@ func (server *Server) sendSocksError(request *handler.Request) {
 	// +-----+--------+-----+---------+---------+
 
 	// }
+	request.Write(errorStream)
+}
+
+func (server *Server) sendSocksConnectError(request *handler.Request, status uint8, req *SockRequest) {
+	request.SetState(handler.ERROR)
+
+	var errorStream []byte
+	// other := new(bytes.Buffer)
+	errorStream = append(errorStream, 0x05)
+	errorStream = append(errorStream, status)
+	errorStream = append(errorStream, 0x00)
+	errorStream = append(errorStream, req.destaddr...)
+	errorStream = append(errorStream, 0x01)
+	errorStream = append(errorStream, 0xBB)
+
 	request.Write(errorStream)
 }

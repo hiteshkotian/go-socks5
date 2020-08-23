@@ -7,6 +7,7 @@ package proxy
 import (
 	"errors"
 	"fmt"
+	"net"
 )
 
 type nmethods uint8
@@ -45,9 +46,9 @@ const (
 	AtypIPV6 atype = 0x04
 
 	//AddrIPV4Size IPV4 Address size
-	AddrIPV4Size uint8 = 0x04
+	AddrIPV4Size uint8 = net.IPv4len
 	//AddrIPV6Size IPV6 Address size
-	AddrIPV6Size uint8 = 0x10
+	AddrIPV6Size uint8 = net.IPv6len
 
 	//ReplySucceeded Reply sent to client suceeded
 	ReplySucceeded reply = 0x00

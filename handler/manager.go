@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bufio"
 	"net"
 	"time"
 )
@@ -41,18 +40,12 @@ type Request struct {
 	outboundConnection net.Conn
 
 	state ProxyState
-
-	streamReader *bufio.Reader
-	streamWriter *bufio.Writer
 }
 
 // NewRequest creates a new instance of request
 func NewRequest(conn net.Conn) *Request {
 	id := time.Now().String()
 	request := Request{requestID: id, connection: conn, state: NEW}
-
-	request.streamReader = bufio.NewReader(conn)
-	request.streamWriter = bufio.NewWriter(conn)
 
 	return &request
 }
@@ -92,6 +85,10 @@ func (request *Request) SetState(state ProxyState) {
 // State returns the current state of the request
 func (request *Request) State() ProxyState {
 	return request.state
+}
+
+func (request *Request) GetConnection() net.Conn {
+	return request.connection
 }
 
 // Handler interface defines the basic function
