@@ -2,7 +2,7 @@
 //Author	: Nikhil Kotian
 //Copyright	:
 
-package proxy
+package socks5
 
 import (
 	"testing"

@@ -2,7 +2,7 @@
 //Author	: Nikhil Kotian
 //Copyright	:
 
-package proxy
+package socks5
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ type nmethods uint8
 type method uint8
 type cmd uint8
 type atype uint8
-type reply uint8
+type ReplyType uint8
 
 const (
 	//Socks5 Version field of the socks protocol
@@ -51,23 +51,23 @@ const (
 	AddrIPV6Size uint8 = net.IPv6len
 
 	//ReplySucceeded Reply sent to client suceeded
-	ReplySucceeded reply = 0x00
+	ReplySucceeded ReplyType = 0x00
 	//ReplyGeneralFail Reply sent to client that the request failed
-	ReplyGeneralFail reply = 0x01
+	ReplyGeneralFail ReplyType = 0x01
 	//ReplyConnDenied Reply sent to client that connection is denied
-	ReplyConnDenied reply = 0x02
+	ReplyConnDenied ReplyType = 0x02
 	//ReplyNetUnreachable Reply sent to client that network is unreachable
-	ReplyNetUnreachable reply = 0x03
+	ReplyNetUnreachable ReplyType = 0x03
 	//ReplyHostUnreachable Reply sent to client that the host is unreachable
-	ReplyHostUnreachable reply = 0x04
+	ReplyHostUnreachable ReplyType = 0x04
 	//ReplyConnRefused Reply sent to client that connection was refused
-	ReplyConnRefused reply = 0x05
+	ReplyConnRefused ReplyType = 0x05
 	//ReplyTTLExpired Reply sent to client that TTL expired
-	ReplyTTLExpired reply = 0x06
+	ReplyTTLExpired ReplyType = 0x06
 	//ReplyCmdUnsupp Reply sent to client that command is unsupported
-	ReplyCmdUnsupp reply = 0x07
+	ReplyCmdUnsupp ReplyType = 0x07
 	//ReplyAddrTypUnsupp Reply sent to client that address type is unsupported
-	ReplyAddrTypUnsupp reply = 0x08
+	ReplyAddrTypUnsupp ReplyType = 0x08
 )
 
 //MethodSelectionReq Method selection request packet
@@ -90,15 +90,15 @@ type SocksInitial struct {
 //SockRequest Sock5 Request structure
 type SockRequest struct {
 	cmd
-	atype
+	atype    atype
 	destaddr []uint8
 	destport uint16
 }
 
 //SockReply reply structure
 type SockReply struct {
-	reply
-	atype
+	reply    ReplyType
+	atype    atype
 	bindaddr []uint8
 	bindport uint16
 }
@@ -106,10 +106,32 @@ type SockReply struct {
 //UDPPacket request/reply packet
 type UDPPacket struct {
 	fragment uint8
-	atype
-	address []uint8
-	port    uint16
-	data    []uint8
+	atype    atype
+	address  []uint8
+	port     uint16
+	data     []uint8
+}
+
+func CreateSocksReply(connectRequest SockRequest) SockReply {
+	reply := SockReply{reply: ReplySucceeded, atype: connectRequest.atype,
+		bindaddr: connectRequest.destaddr, bindport: connectRequest.destport}
+	return reply
+}
+
+func (reply SockReply) SetReply(status ReplyType) {
+	reply.reply = status
+}
+
+func (request SockRequest) GetAddressType() atype {
+	return request.atype
+}
+
+func (request SockRequest) GetDestinationAddress() []byte {
+	return request.destaddr
+}
+
+func (request SockRequest) GetDestinationPort() uint16 {
+	return request.destport
 }
 
 func CheckMessageVersion(msg []uint8) error {
@@ -191,15 +213,31 @@ func GetSocketRequestDeserialized(msg []uint8) (SockRequest, error) {
 	return ret, nil
 }
 
+// GetSocketInitialSerialized Serializes the incoming init request
 func GetSocketInitialSerialized(msg []uint8) (initial SocksInitial, err error) {
 	if len(msg) < 3 {
 		err = fmt.Errorf("Packet too small for an initial request")
 		return
 	}
 
+	if err = CheckMessageVersion(msg); err != nil {
+		return
+	}
+
 	initial.version = msg[0]
 	initial.authCount = msg[1]
 	initial.authOptions = msg[2:]
+
+	return
+}
+
+// GetSocketInitialResponseSerialized Serializes the socket reply for init request
+func GetSocketInitialResponseSerialized(errorCode uint8) (reply []uint8, err error) {
+	reply = make([]uint8, 2)
+
+	reply[0] = Socks5
+	reply[1] = errorCode
+
 	return
 }
 

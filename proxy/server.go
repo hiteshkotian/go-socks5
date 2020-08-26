@@ -1,12 +1,16 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"hiteshkotian/ssl-tunnel/handler"
 	"hiteshkotian/ssl-tunnel/logging"
+	"hiteshkotian/ssl-tunnel/socks5"
 	"net"
 	"time"
 )
+
+type ctxKey string
 
 // Server structure represents the main proxy instance
 type Server struct {
@@ -89,6 +93,7 @@ func (server *Server) ServeTCP() error {
 // startHandler function starts listening for incoming TCP
 // connection and handles the incoming requests
 func (server *Server) startHandler() {
+
 	for {
 		select {
 		case conn, more := <-server.connectHandler:
@@ -96,153 +101,182 @@ func (server *Server) startHandler() {
 				return
 			}
 			server.sem <- true
-			go server.handleRequest(conn, server.sem)
+
+			ctx := context.Background()
+			go server.handleRequest2(ctx, conn, server.sem)
+			// go server.handleRequest(conn, server.sem)
 		}
 	}
 }
 
-// HandleRequest implementation for TCP Handler.
-// This function will accept all incoming TCP requests
-// and serialize it to a request object if it is a valid request.
-// In case of a serialization issue, the handler will return
-// an appropriate error code to the client.
-func (server *Server) handleRequest(conn net.Conn, sem chan bool) error {
-
+func (server *Server) handleRequest2(ctx context.Context,
+	conn net.Conn, sem chan bool) {
 	logging.Debug("Processing incoming client request")
-	request := handler.NewRequest(conn)
-	defer request.Close()
 
-	err := server.handleInitial(request)
-	if err != nil {
-		server.sendSocksError(request)
-		<-sem
-		return nil
+	// request := &handler.Request{state: RequestStateInit,
+	// 	clientConnection: conn, sourceAddr: conn.RemoteAddr()}
+	request_obj := socks5.NewRequest(conn)
+
+	processRequest := true
+	for processRequest {
+		// Step 1 : Handle Initiial
+		switch request_obj.State {
+		case socks5.RequestStateInit:
+			server.handleInitialLocal(request_obj)
+		case socks5.RequestStateConnecting:
+			server.handleConnectLocal(request_obj)
+		case socks5.RequestStateProxying:
+			server.startProxying(request_obj)
+		case socks5.RequestStateTerminating:
+			request_obj.Close()
+			<-sem
+			processRequest = false
+		}
 	}
+}
 
-	// Writ accept
-	response := []byte{0x05, 0x00}
-	conn.Write(response)
-
-	// Wait for response
-	err = server.handleConnectRequest(request)
-	if err != nil {
-		logging.Error("Error handling connect request : ", err)
-		server.sendSocksError(request)
-		<-sem
-		return nil
-	}
-
+func (server *Server) startProxying(request_obj *socks5.Request) {
 	outboundHandler := handler.OutboundHandler{}
-	err = outboundHandler.HandleRequest(request)
+	err := outboundHandler.HandleRequest(request_obj)
 	if err != nil {
-		logging.Error("Error while sending request : %s\n", err)
-		server.sendSocksError(request)
-		<-sem
-		return nil
+		request_obj.State = socks5.RequestStateTerminating
+		return
 	}
 
-	<-sem
-	return nil
+	request_obj.State = socks5.RequestStateTerminating
 }
 
-func (server *Server) handleInitial(request *handler.Request) error {
-	data := make([]byte, 20)
-	n, e := request.Read(data)
+func (server *Server) handleInitialLocal(request_obj *socks5.Request) {
+	// Initial request structre is :
+	// init_request_pkt {
+	// 		version (1) = 0x05
+	//		nmethods (1)
+	//		methods (1...255)
+	// }
+	// Response structure is :
+	// init_response_pkt {
+	// 		version (1) = 0x05
+	//		method (1)
+	// }
+	// TODO Check how to handle authentication request
+	logging.Debug("Processing init request")
+	clientConn := request_obj.ClientConnection
+
+	requestStream := make([]byte, 260)
+
+	n, e := clientConn.Read(requestStream)
 	if e != nil {
-		return e
+		fmt.Println("Error reading response: ", e)
+	} else if n < 2 {
+		fmt.Println("Invalid bytes read")
 	}
 
-	version := data[0]
-	authCt := data[1]
-	logging.Debug("Total num : %d", n)
-	logging.Debug("Received connect with version : %d", version)
-	logging.Debug("Received connect with auth ct : %d", authCt)
+	logging.DumpHex(requestStream[:n], "INIT Method")
 
-	if version != 0x05 {
-		logging.Error("Version mismatch",
-			fmt.Errorf("Version expeted was 0x05 but received %d", version))
+	_, err := socks5.GetSocketInitialSerialized(requestStream[:n])
+
+	if err != nil {
+		response, _ := socks5.GetSocketInitialResponseSerialized(0xFF)
+		clientConn.Write(response)
+		request_obj.State = socks5.RequestStateTerminating
+		return
+	}
+
+	// TODO Add support for authentication
+
+	response, _ := socks5.GetSocketInitialResponseSerialized(0x00)
+	logging.DumpHex(response, "Sending response")
+	clientConn.Write(response)
+	// Change the state
+	request_obj.State = socks5.RequestStateConnecting
+}
+func (server *Server) handleConnectLocal(request_obj *socks5.Request) {
+	// Connect request format
+	// connect_req_pkt {
+	//		version (1) = 0x05
+	//		command (1) = [0x01, 0x02, 0x03]
+	//		rsv (1) = 0x00
+	//		atyp (1) = [0x01, 0x03, 0x04]
+	//		dst.addr (...)
+	//		dst.port (2)
+	// }
+	// Connect response format
+	// connect_response_pkt {
+	//		version (1) = 0x05
+	//		rep (1) = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09]
+	//		rsv (1) = 0x00
+	//		atyp (1) = [0x01, 0x03, 0x04]
+	//		bind.addr (...)
+	//		bind.port (2)
+	// }
+	fmt.Println("To connect here")
+	// var outConnection net.Conn
+
+	clientConn := request_obj.ClientConnection
+	requestStream := make([]byte, 512)
+
+	n, e := clientConn.Read(requestStream)
+	if e != nil || n <= 0 {
+		// Send error
+		response, _ := socks5.GetSocketInitialResponseSerialized(0xFF)
+		clientConn.Write(response)
+		request_obj.State = socks5.RequestStateTerminating
+		return
+	}
+
+	connectRequest, err := socks5.GetSocketRequestDeserialized(requestStream[:n])
+
+	if err != nil {
+		response, _ := socks5.GetSocketInitialResponseSerialized(0xFF)
+		clientConn.Write(response)
+		request_obj.State = socks5.RequestStateTerminating
+		return
+	}
+
+	// reply := socks5.SockReply{reply: socks5.ReplySucceeded, atype: connectsocks5.atype,
+	// 	bindaddr: connectsocks5.destaddr,
+	// 	bindport: connectsocks5.destport}
+	reply := socks5.CreateSocksReply(connectRequest)
+
+	// Create connection
+	request_obj.OutboundConnection, err = server.createOuboundConnection(connectRequest)
+	if err != nil {
+		logging.Error("Error connecting to remote host", err)
+		// reply.reply = ReplyNetUnreachable
+		reply.SetReply(socks5.ReplyNetUnreachable)
+		// replyStream, _ := GetSocketResponseSerialized(reply)
+		// clientConn.Write(replyStream)
+		request_obj.State = socks5.RequestStateTerminating
+		// return
 	} else {
-		logging.Debug("Version matched!!!")
+		request_obj.State = socks5.RequestStateProxying
 	}
-	for i := 0; i < n; i++ {
-		logging.Debug("0x%02x ", data[i])
-	}
-	request.SetState(handler.INITIALIZING)
 
-	return nil
+	replyStream, _ := socks5.GetSocketResponseSerialized(reply)
+	clientConn.Write(replyStream)
+	return
 }
 
-func (server *Server) handleConnectRequest(request *handler.Request) error {
-	data := make([]byte, 200)
-	_, err := request.Read(data)
+func (server *Server) createOuboundConnection(
+	connectRequest socks5.SockRequest) (outConnection net.Conn, err error) {
 
-	if err != nil {
-		logging.Error("error reading request", err)
-		return err
+	var address string
+	var network string
+
+	switch connectRequest.GetAddressType() {
+	case socks5.AtypIPV4:
+		network = "tcp"
+		ip := net.IP(connectRequest.GetDestinationAddress())
+		address = fmt.Sprintf("%s:%d", ip.String(), connectRequest.GetDestinationPort())
+	case socks5.AtypIPV6:
+		network = "tcp6"
+		ip := net.IP(connectRequest.GetDestinationAddress())
+		address = fmt.Sprintf("[%s]:%d", ip.String(), connectRequest.GetDestinationPort())
+		// TODO Lookup Domain
 	}
 
-	connect, err := GetSocketRequestDeserialized(data)
-	if err != nil {
-		logging.Error("Connect request error", err)
-		return err
-	}
-
-	var outConnection net.Conn
-	if connect.atype == 0x01 {
-		ip := fmt.Sprintf("%d.%d.%d.%d", connect.destaddr[0],
-			connect.destaddr[1], connect.destaddr[2], connect.destaddr[3])
-		request.SetOutboundIP(ip)
-		outConnection, err = net.Dial("tcp", fmt.Sprintf("%s:%d", ip, connect.destport))
-		if err != nil {
-			return err
-		}
-
-		request.SetOutboundConnection(outConnection)
-	} else if connect.atype == 0x03 {
-		addr, err := net.LookupHost(string(connect.destaddr))
-		if err != nil {
-			return err
-		}
-
-		host := fmt.Sprintf("%s:%d", addr[0], connect.destport)
-		outConnection, err = net.Dial("tcp", host)
-		if err != nil {
-			return err
-		}
-
-		request.SetOutboundConnection(outConnection)
-	} else if connect.atype == 0x04 {
-		ip := net.IP(connect.destaddr)
-		ipAddr := ip.String()
-		// logging.Debug("Connecting to [%s]:%d\n", ipAddr, connect.destport)
-		request.SetOutboundIP(ipAddr)
-		outConnection, err = net.Dial("tcp6", fmt.Sprintf("[%s]:%d", ipAddr, connect.destport))
-		if err != nil {
-			return err
-		}
-		request.SetOutboundConnection(outConnection)
-	} else {
-		// logging.Info("Connection type %d not supported", connect.atype)
-		// return fmt.Errorf("Unsupported connection type")
-		server.sendSocksConnectError(request, 0x08, &connect)
-		return fmt.Errorf("Unsupported connection type")
-	}
-
-	request.SetOutboundPort(connect.destport)
-
-	dest := connect.destaddr
-	port := []byte{0x00, 0x50}
-
-	resp := make([]byte, 4+len(dest)+len(port))
-	resp[0] = 0x05
-	resp[1] = 0x00
-	resp[2] = 0x00
-	resp[3] = byte(connect.atype)
-	copy(resp[4:], dest)
-	copy(resp[4+len(dest):], port)
-
-	request.Write(resp)
-	return nil
+	outConnection, err = net.Dial(network, address)
+	return
 }
 
 // Stop stops the server
@@ -251,46 +285,4 @@ func (server *Server) Stop() {
 	logging.Info("Stopping Proxy Server")
 	close(server.connectHandler)
 	server.listener.Close()
-}
-
-func (server *Server) sendSocksError(request *handler.Request) {
-	// state := request.State()
-	request.SetState(handler.ERROR)
-	var errorStream []byte
-	// switch state {
-	// case handler.NEW:
-	// Sending INIT error
-	// Format :
-	// +-----+-------+
-	// | 1   |   1   |
-	// +-----+-------+
-	// | VER | STATE |
-	// +-----+-------+
-	errorStream = []byte{0x05, 0x01}
-	// default:
-	// Sending INIT error
-	// Format :
-	// +-----+--------+-----+---------+---------+
-	// | 1   |   1    |  1  |  var    |   2     |
-	// +-----+--------+-----+---------+---------+
-	// | VER | STATUS | RSV | BNDADDR | BNDPORT |
-	// +-----+--------+-----+---------+---------+
-
-	// }
-	request.Write(errorStream)
-}
-
-func (server *Server) sendSocksConnectError(request *handler.Request, status uint8, req *SockRequest) {
-	request.SetState(handler.ERROR)
-
-	var errorStream []byte
-	// other := new(bytes.Buffer)
-	errorStream = append(errorStream, 0x05)
-	errorStream = append(errorStream, status)
-	errorStream = append(errorStream, 0x00)
-	errorStream = append(errorStream, req.destaddr...)
-	errorStream = append(errorStream, 0x01)
-	errorStream = append(errorStream, 0xBB)
-
-	request.Write(errorStream)
 }

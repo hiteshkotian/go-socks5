@@ -5,6 +5,7 @@ default: build
 build: test
 	@echo Building server code
 	@mkdir -p ./bin
+	@go build ./socks5
 	@go build ./proxy
 	@go build ./handler
 	@echo Building binary

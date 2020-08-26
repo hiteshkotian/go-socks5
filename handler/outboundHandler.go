@@ -2,6 +2,7 @@ package handler
 
 import (
 	"hiteshkotian/ssl-tunnel/logging"
+	"hiteshkotian/ssl-tunnel/socks5"
 	"net"
 	"time"
 )
@@ -58,12 +59,15 @@ func proxyData(from net.Conn, to net.Conn, complete chan bool,
 // HandleRequest implementation for Outbound handler.
 // This function will handle sending the request from
 // the client to the destination server
-func (outbound *OutboundHandler) HandleRequest(request *Request) error {
+func (outbound *OutboundHandler) HandleRequest(request *socks5.Request) error {
 
-	client := request.connection
-	remote := request.outboundConnection
+	client := request.ClientConnection
+	remote := request.OutboundConnection
 
-	defer remote.Close()
+	// defer func() {
+	// 	request.State = RequestStateTerminating
+	// 	// remote.Close()
+	// }()
 
 	complete := make(chan bool, 2)
 	ch1 := make(chan bool, 1)
