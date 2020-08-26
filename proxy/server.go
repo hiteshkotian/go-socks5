@@ -104,7 +104,6 @@ func (server *Server) startHandler() {
 
 			ctx := context.Background()
 			go server.handleRequest2(ctx, conn, server.sem)
-			// go server.handleRequest(conn, server.sem)
 		}
 	}
 }
@@ -113,40 +112,38 @@ func (server *Server) handleRequest2(ctx context.Context,
 	conn net.Conn, sem chan bool) {
 	logging.Debug("Processing incoming client request")
 
-	// request := &handler.Request{state: RequestStateInit,
-	// 	clientConnection: conn, sourceAddr: conn.RemoteAddr()}
-	request_obj := socks5.NewRequest(conn)
+	request := socks5.NewRequest(conn)
 
 	processRequest := true
 	for processRequest {
 		// Step 1 : Handle Initiial
-		switch request_obj.State {
+		switch request.State {
 		case socks5.RequestStateInit:
-			server.handleInitialLocal(request_obj)
+			server.handleInitialLocal(request)
 		case socks5.RequestStateConnecting:
-			server.handleConnectLocal(request_obj)
+			server.handleConnectLocal(request)
 		case socks5.RequestStateProxying:
-			server.startProxying(request_obj)
+			server.startProxying(request)
 		case socks5.RequestStateTerminating:
-			request_obj.Close()
+			request.Close()
 			<-sem
 			processRequest = false
 		}
 	}
 }
 
-func (server *Server) startProxying(request_obj *socks5.Request) {
+func (server *Server) startProxying(request *socks5.Request) {
 	outboundHandler := handler.OutboundHandler{}
-	err := outboundHandler.HandleRequest(request_obj)
+	err := outboundHandler.HandleRequest(request)
 	if err != nil {
-		request_obj.State = socks5.RequestStateTerminating
+		request.State = socks5.RequestStateTerminating
 		return
 	}
 
-	request_obj.State = socks5.RequestStateTerminating
+	request.State = socks5.RequestStateTerminating
 }
 
-func (server *Server) handleInitialLocal(request_obj *socks5.Request) {
+func (server *Server) handleInitialLocal(request *socks5.Request) {
 	// Initial request structre is :
 	// init_request_pkt {
 	// 		version (1) = 0x05
@@ -160,7 +157,7 @@ func (server *Server) handleInitialLocal(request_obj *socks5.Request) {
 	// }
 	// TODO Check how to handle authentication request
 	logging.Debug("Processing init request")
-	clientConn := request_obj.ClientConnection
+	clientConn := request.ClientConnection
 
 	requestStream := make([]byte, 260)
 
@@ -178,7 +175,7 @@ func (server *Server) handleInitialLocal(request_obj *socks5.Request) {
 	if err != nil {
 		response, _ := socks5.GetSocketInitialResponseSerialized(0xFF)
 		clientConn.Write(response)
-		request_obj.State = socks5.RequestStateTerminating
+		request.State = socks5.RequestStateTerminating
 		return
 	}
 
@@ -188,9 +185,9 @@ func (server *Server) handleInitialLocal(request_obj *socks5.Request) {
 	logging.DumpHex(response, "Sending response")
 	clientConn.Write(response)
 	// Change the state
-	request_obj.State = socks5.RequestStateConnecting
+	request.State = socks5.RequestStateConnecting
 }
-func (server *Server) handleConnectLocal(request_obj *socks5.Request) {
+func (server *Server) handleConnectLocal(request *socks5.Request) {
 	// Connect request format
 	// connect_req_pkt {
 	//		version (1) = 0x05
@@ -209,10 +206,8 @@ func (server *Server) handleConnectLocal(request_obj *socks5.Request) {
 	//		bind.addr (...)
 	//		bind.port (2)
 	// }
-	fmt.Println("To connect here")
-	// var outConnection net.Conn
 
-	clientConn := request_obj.ClientConnection
+	clientConn := request.ClientConnection
 	requestStream := make([]byte, 512)
 
 	n, e := clientConn.Read(requestStream)
@@ -220,7 +215,7 @@ func (server *Server) handleConnectLocal(request_obj *socks5.Request) {
 		// Send error
 		response, _ := socks5.GetSocketInitialResponseSerialized(0xFF)
 		clientConn.Write(response)
-		request_obj.State = socks5.RequestStateTerminating
+		request.State = socks5.RequestStateTerminating
 		return
 	}
 
@@ -229,27 +224,21 @@ func (server *Server) handleConnectLocal(request_obj *socks5.Request) {
 	if err != nil {
 		response, _ := socks5.GetSocketInitialResponseSerialized(0xFF)
 		clientConn.Write(response)
-		request_obj.State = socks5.RequestStateTerminating
+		request.State = socks5.RequestStateTerminating
 		return
 	}
 
-	// reply := socks5.SockReply{reply: socks5.ReplySucceeded, atype: connectsocks5.atype,
-	// 	bindaddr: connectsocks5.destaddr,
-	// 	bindport: connectsocks5.destport}
 	reply := socks5.CreateSocksReply(connectRequest)
 
 	// Create connection
-	request_obj.OutboundConnection, err = server.createOuboundConnection(connectRequest)
+	request.OutboundConnection, err = server.createOuboundConnection(connectRequest)
 	if err != nil {
 		logging.Error("Error connecting to remote host", err)
-		// reply.reply = ReplyNetUnreachable
 		reply.SetReply(socks5.ReplyNetUnreachable)
-		// replyStream, _ := GetSocketResponseSerialized(reply)
-		// clientConn.Write(replyStream)
-		request_obj.State = socks5.RequestStateTerminating
+		request.State = socks5.RequestStateTerminating
 		// return
 	} else {
-		request_obj.State = socks5.RequestStateProxying
+		request.State = socks5.RequestStateProxying
 	}
 
 	replyStream, _ := socks5.GetSocketResponseSerialized(reply)

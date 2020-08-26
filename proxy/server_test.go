@@ -23,8 +23,8 @@ func TestInitWithNoMethods(t *testing.T) {
 	defer readConn.Close()
 
 	go func() {
-		request_obj := &socks5.Request{ClientConnection: writeConn}
-		server.handleInitialLocal(request_obj)
+		request := &socks5.Request{ClientConnection: writeConn}
+		server.handleInitialLocal(request)
 		writeConn.Close()
 	}()
 
@@ -66,8 +66,8 @@ func TestInitWithInvalidVersion(t *testing.T) {
 	defer readConn.Close()
 
 	go func() {
-		request_obj := &socks5.Request{ClientConnection: writeConn}
-		server.handleInitialLocal(request_obj)
+		request := &socks5.Request{ClientConnection: writeConn}
+		server.handleInitialLocal(request)
 		writeConn.Close()
 	}()
 
@@ -108,8 +108,8 @@ func TestInitWithIncompletePacket(t *testing.T) {
 	defer readConn.Close()
 
 	go func() {
-		request_obj := &socks5.Request{ClientConnection: writeConn}
-		server.handleInitialLocal(request_obj)
+		request := &socks5.Request{ClientConnection: writeConn}
+		server.handleInitialLocal(request)
 		writeConn.Close()
 	}()
 
