@@ -181,22 +181,22 @@ func TestSockRequestDecodeCorrectDomain(t *testing.T) {
 	}
 }
 
-// func TestSocketRequestDecodeWrongSize(t *testing.T) {
-// 	msg := []uint8{Socks5, uint8(CmdConnect)}
+func TestSocketRequestDecodeWrongSize(t *testing.T) {
+	msg := []uint8{Socks5, uint8(CmdConnect)}
 
-// 	_, err := GetSocketRequestDeserialized(msg)
+	_, err := GetSocketRequestDeserialized(msg)
 
-// 	if err == nil {
-// 		t.Errorf("Sock5Packet: Didnot detect smaller size")
-// 	}
+	if err == nil {
+		t.Errorf("Sock5Packet: Didnot detect smaller size")
+	}
 
-// 	wrongsize := []uint8{Socks5, uint8(CmdConnect), 0x00, uint8(AtypIPV4), 0x1, 0x4, 0x21, 0x45, 0x56}
-// 	_, rerr := GetSocketRequestDeserialized(wrongsize)
+	wrongsize := []uint8{Socks5, uint8(CmdConnect), 0x00, uint8(AtypIPV4), 0x1, 0x4, 0x21, 0x45, 0x56}
+	_, rerr := GetSocketRequestDeserialized(wrongsize)
 
-// 	if rerr == nil {
-// 		t.Errorf("Sock5Packet: Didnot detect wrong size")
-// 	}
-// }
+	if rerr == nil {
+		t.Errorf("Sock5Packet: Didnot detect wrong size")
+	}
+}
 
 func TestSocketResponseCorrect(t *testing.T) {
 	resp := SockReply{ReplyGeneralFail, AtypIPV4, []uint8{0x5, 0x6, 0x7, 0x8}, 0x5645}

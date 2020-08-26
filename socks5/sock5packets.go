@@ -203,11 +203,10 @@ func GetSocketRequestDeserialized(msg []uint8) (SockRequest, error) {
 		return ret, errors.New("Socks5Packet: Wrong address type in request")
 	}
 
-	ret.destaddr = make([]uint8, size)
-
-	for i, v := range msg[addrStart : addrStart+size] {
-		ret.destaddr[i] = v
+	if len(msg[addrStart:]) < int(size)+2 {
+		return ret, errors.New("Socks5Packet: Packet too small for request")
 	}
+	ret.destaddr = msg[addrStart : addrStart+size]
 
 	ret.destport = (uint16(msg[addrStart+size]) << 8) | uint16(msg[addrStart+size+1])
 	return ret, nil
