@@ -163,9 +163,9 @@ func (server *Server) handleInitialLocal(request *socks5.Request) {
 
 	n, e := clientConn.Read(requestStream)
 	if e != nil {
-		fmt.Println("Error reading response: ", e)
+		logging.Error("Error reading response", e)
 	} else if n < 2 {
-		fmt.Println("Invalid bytes read")
+		logging.Error("Insufficient bytes read", nil)
 	}
 
 	logging.DumpHex(requestStream[:n], "INIT Method")
