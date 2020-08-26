@@ -16,6 +16,7 @@ build: test
 test:
 	@echo Executing unit tests
 	@go test ./proxy
+	@go test ./socks5
 
 clean:
 	@echo Cleaning up binaries
